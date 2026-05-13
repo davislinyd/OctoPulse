@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://octopulse.local/schemas/status.schema.json",
+  "title": "OctoPulse Project Status Pulse",
+  "type": "object",
+  "required": [
+    "name",
+    "path",
+    "last_updated",
+    "phase",
+    "health",
+    "status_confidence",
+    "status_source",
+    "current_goal",
+    "latest_summary",
+    "next_action",
+    "git",
+    "verification",
+    "attention"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "name": { "type": "string" },
+    "path": { "type": "string" },
+    "last_updated": {
+      "type": "string",
+      "description": "ISO 8601 timestamp, preferably with timezone offset."
+    },
+    "phase": {
+      "type": "string",
+      "enum": ["planning", "implementation", "verification", "maintenance", "paused"]
+    },
+    "health": {
+      "type": "string",
+      "enum": ["active", "stable", "needs_attention", "blocked", "stale"]
+    },
+    "status_confidence": {
+      "type": "string",
+      "enum": ["high", "medium", "low"]
+    },
+    "status_source": {
+      "type": "string",
+      "enum": ["agent_reported", "scanner_verified", "manual"]
+    },
+    "current_goal": { "type": "string" },
+    "latest_summary": { "type": "string" },
+    "next_action": { "type": "string" },
+    "git": {
+      "type": "object",
+      "required": ["branch", "dirty", "remote_tracking", "commit"],
+      "additionalProperties": true,
+      "properties": {
+        "branch": { "type": "string" },
+        "dirty": { "type": "boolean" },
+        "remote_tracking": { "type": ["string", "null"] },
+        "commit": { "type": "string" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "required": ["status", "last_commands", "last_verified_at"],
+      "additionalProperties": true,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["passed", "failed", "not_run", "partial"]
+        },
+        "last_commands": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "last_verified_at": {
+          "type": ["string", "null"],
+          "description": "ISO 8601 timestamp with timezone offset when verification was run."
+        }
+      }
+    },
+    "attention": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

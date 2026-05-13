@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OctoPulse Dashboard</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f7f4;
+      --ink: #222831;
+      --muted: #68707d;
+      --line: #d9ded8;
+      --panel: #ffffff;
+      --accent: #0f766e;
+      --attention: #b45309;
+      --blocked: #b91c1c;
+      --stable: #2563eb;
+      --stale: #64748b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      background: #ffffff;
+      padding: 24px clamp(16px, 4vw, 48px);
+    }
+    h1 {
+      margin: 0 0 4px;
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+    .timestamp {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    main {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+      gap: 18px;
+      padding: 24px clamp(16px, 4vw, 48px) 40px;
+    }
+    .group {
+      min-width: 0;
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+    .empty {
+      margin: 0;
+      color: var(--muted);
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.5);
+    }
+    .project {
+      margin: 0 0 12px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+    .status-blocked { border-left-color: var(--blocked); }
+    .status-needs_attention { border-left-color: var(--attention); }
+    .status-stable { border-left-color: var(--stable); }
+    .status-stale,
+    .status-missing_status,
+    .status-missing_project,
+    .status-invalid_status { border-left-color: var(--stale); }
+    .project h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+    dl {
+      display: grid;
+      grid-template-columns: 110px minmax(0, 1fr);
+      gap: 6px 10px;
+      margin: 0;
+    }
+    dt {
+      color: var(--muted);
+    }
+    dd {
+      margin: 0;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>OctoPulse</h1>
+    <p class="timestamp">Scan timestamp: <code>2026-05-13T14:03:47+08:00</code></p>
+  </header>
+  <main>
+    <section class="group"><h2>Blocked</h2><p class="empty">No projects.</p></section><section class="group"><h2>Needs Attention</h2><p class="empty">No projects.</p></section><section class="group"><h2>Active</h2><p class="empty">No projects.</p></section><section class="group"><h2>Stable</h2><p class="empty">No projects.</p></section><section class="group"><h2>Stale</h2><article class="project status-stale"><h3>Example Project</h3><dl><dt>Status</dt><dd>stale</dd><dt>Health</dt><dd>active</dd><dt>Goal</dt><dd>Provide a working sample status pulse for OctoPulse v1.</dd><dt>Summary</dt><dd>The sample project demonstrates the required status file shape and lets a fresh scan complete immediately.</dd><dt>Next</dt><dd>Replace the sample entry with real project entries in projects.yaml.</dd><dt>Updated</dt><dd>2026-05-11T12:14:46+08:00</dd><dt>Git</dt><dd>main / dirty true / none / none</dd><dt>Verify</dt><dd>not_run</dd><dt>Attention</dt><dd>none</dd><dt>Reason</dt><dd>last_updated is older than 24 hours.</dd></dl></article></section><section class="group"><h2>Missing Project</h2><p class="empty">No projects.</p></section><section class="group"><h2>Missing Status</h2><p class="empty">No projects.</p></section><section class="group"><h2>Invalid Status</h2><p class="empty">No projects.</p></section>
+  </main>
+</body>
+</html>

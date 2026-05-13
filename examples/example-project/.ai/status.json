@@ -1,0 +1,24 @@
+{
+  "name": "Example Project",
+  "path": "/Users/lindav/git/OctoPulse/examples/example-project",
+  "last_updated": "2026-05-11T12:14:46+08:00",
+  "phase": "planning",
+  "health": "active",
+  "status_confidence": "high",
+  "status_source": "manual",
+  "current_goal": "Provide a working sample status pulse for OctoPulse v1.",
+  "latest_summary": "The sample project demonstrates the required status file shape and lets a fresh scan complete immediately.",
+  "next_action": "Replace the sample entry with real project entries in projects.yaml.",
+  "git": {
+    "branch": "none",
+    "dirty": false,
+    "remote_tracking": null,
+    "commit": "none"
+  },
+  "verification": {
+    "status": "not_run",
+    "last_commands": [],
+    "last_verified_at": null
+  },
+  "attention": []
+}

@@ -1,0 +1,5 @@
+projects:
+  - name: Example Project
+    path: ./examples/example-project
+    status_file: .ai/status.json
+    detail_file: PROJECT_STATUS.md
