@@ -30,11 +30,6 @@ reports/
   latest.md
 dashboard/
   index.html
-examples/
-  example-project/
-    PROJECT_STATUS.md
-    .ai/
-      status.json
 ```
 
 ## Status Pulse
@@ -56,7 +51,7 @@ Required enums:
 - `status_source`: `agent_reported`, `scanner_verified`, `manual`
 - `verification.status`: `passed`, `failed`, `not_run`, `partial`
 
-See [schemas/status.schema.json](schemas/status.schema.json) and [examples/example-project/.ai/status.json](examples/example-project/.ai/status.json).
+See [schemas/status.schema.json](schemas/status.schema.json) and [projects.yaml](projects.yaml).
 
 ## Configure Projects
 
@@ -64,8 +59,8 @@ Edit [projects.yaml](projects.yaml):
 
 ```yaml
 projects:
-  - name: Example Project
-    path: ./examples/example-project
+  - name: Project Name
+    path: /absolute/project/path
     status_file: .ai/status.json
     detail_file: PROJECT_STATUS.md
 ```
@@ -77,7 +72,7 @@ The v1 parser intentionally supports only this small YAML shape, so no extra dep
 ## Validate One Status File
 
 ```bash
-python tools/validate_status.py examples/example-project/.ai/status.json
+python tools/validate_status.py /absolute/project/path/.ai/status.json
 ```
 
 Expected success output:

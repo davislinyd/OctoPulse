@@ -45,11 +45,6 @@ octopulse/
     latest.md
   dashboard/
     index.html
-  examples/
-    example-project/
-      PROJECT_STATUS.md
-      .ai/
-        status.json
 ```
 
 Each managed project should expose:
@@ -117,8 +112,8 @@ Example:
 
 ```yaml
 projects:
-  - name: Example Project
-    path: ./examples/example-project
+  - name: Project Name
+    path: /absolute/project/path
     status_file: .ai/status.json
     detail_file: PROJECT_STATUS.md
 ```
@@ -298,24 +293,18 @@ v1 non-goals:
 - No CI or pre-commit enforcement yet.
 - No multi-branch status model yet.
 
-## Sample Project
+## Managed Projects
 
-Create:
+The bootstrap placeholder has been removed after onboarding real project status entries.
 
-```text
-examples/example-project/
-  PROJECT_STATUS.md
-  .ai/status.json
-```
-
-The default `projects.yaml` should point to this sample project so a fresh clone can run immediately.
+`projects.yaml` should point only to actual managed projects.
 
 ## Acceptance Criteria
 
 After implementation, these commands should pass:
 
 ```bash
-python tools/validate_status.py examples/example-project/.ai/status.json
+python tools/validate_status.py /absolute/project/path/.ai/status.json
 python tools/scan_projects.py
 ```
 

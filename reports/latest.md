@@ -1,6 +1,6 @@
 # OctoPulse Latest Report
 
-Scan timestamp: `2026-05-13T16:34:14+08:00`
+Scan timestamp: `2026-05-13T16:42:15+08:00`
 
 ## Blocked
 
@@ -22,17 +22,7 @@ _No projects._
 
 ## Active
 
-### Example Project
-
-- Derived status: `active`
-- Declared health: `active`
-- Current goal: Provide a working sample status pulse for OctoPulse v1.
-- Latest summary: The sample project demonstrates the required status file shape and lets a fresh scan complete immediately.
-- Next action: Replace the sample entry with real project entries in projects.yaml.
-- Last updated: `2026-05-13T14:06:37+08:00`
-- Git: branch `main`, dirty `true`, commit `30e7fbd`, tracking `none`
-- Verification: `passed`
-- Attention: none
+_No projects._
 
 ## Stable
 
