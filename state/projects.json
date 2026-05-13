@@ -1,5 +1,5 @@
 {
-  "scan_timestamp": "2026-05-13T14:06:50+08:00",
+  "scan_timestamp": "2026-05-13T15:50:34+08:00",
   "repo_root": "/Users/lindav/git/OctoPulse",
   "projects": [
     {
@@ -42,7 +42,7 @@
         "branch": "main",
         "dirty": true,
         "remote_tracking": null,
-        "commit": "b17dd50",
+        "commit": "e262afb",
         "errors": []
       }
     }

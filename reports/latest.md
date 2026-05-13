@@ -1,6 +1,6 @@
 # OctoPulse Latest Report
 
-Scan timestamp: `2026-05-13T14:06:50+08:00`
+Scan timestamp: `2026-05-13T15:50:34+08:00`
 
 ## Blocked
 
@@ -20,7 +20,7 @@ _No projects._
 - Latest summary: The sample project demonstrates the required status file shape and lets a fresh scan complete immediately.
 - Next action: Replace the sample entry with real project entries in projects.yaml.
 - Last updated: `2026-05-13T14:06:37+08:00`
-- Git: branch `main`, dirty `true`, commit `b17dd50`, tracking `none`
+- Git: branch `main`, dirty `true`, commit `e262afb`, tracking `none`
 - Verification: `passed`
 - Attention: none
 

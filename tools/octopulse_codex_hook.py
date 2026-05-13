@@ -189,6 +189,7 @@ def build_context(project: dict[str, Any]) -> str:
             "OctoPulse reminder:",
             f"- Project: {project['name']}",
             f"- Managed by OctoPulse: {managed}",
+            "- Use the global `octopulse-status` skill when onboarding or updating project status.",
             f"- Project status files: `{detail_file}` and `{status_file}`",
             "- For non-trivial work, update the project-local status files before finishing.",
             "- Keep `.ai/status.json` short, factual, machine-readable, and schema-compatible.",
