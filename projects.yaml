@@ -3,3 +3,7 @@ projects:
     path: ./examples/example-project
     status_file: .ai/status.json
     detail_file: PROJECT_STATUS.md
+  - name: IT Center Agent 101
+    path: /Users/lindav/git/Sea-Enterprise/IT Center Agent 101
+    status_file: .ai/status.json
+    detail_file: PROJECT_STATUS.md

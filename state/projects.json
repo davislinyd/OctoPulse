@@ -1,5 +1,5 @@
 {
-  "scan_timestamp": "2026-05-13T15:50:34+08:00",
+  "scan_timestamp": "2026-05-13T16:34:14+08:00",
   "repo_root": "/Users/lindav/git/OctoPulse",
   "projects": [
     {
@@ -42,7 +42,61 @@
         "branch": "main",
         "dirty": true,
         "remote_tracking": null,
-        "commit": "e262afb",
+        "commit": "30e7fbd",
+        "errors": []
+      }
+    },
+    {
+      "name": "IT Center Agent 101",
+      "path": "/Users/lindav/git/Sea-Enterprise/IT Center Agent 101",
+      "status_file": "/Users/lindav/git/Sea-Enterprise/IT Center Agent 101/.ai/status.json",
+      "detail_file": "/Users/lindav/git/Sea-Enterprise/IT Center Agent 101/PROJECT_STATUS.md",
+      "declared": {
+        "name": "IT Center Agent 101",
+        "path": "/Users/lindav/git/Sea-Enterprise/IT Center Agent 101",
+        "last_updated": "2026-05-13T16:24:10+08:00",
+        "phase": "implementation",
+        "health": "needs_attention",
+        "status_confidence": "medium",
+        "status_source": "agent_reported",
+        "current_goal": "Maintain the repo-local IT Center API knowledge base, ticket analysis pipeline, and shared ITC pipeline framework while making the current implementation state visible to OctoPulse.",
+        "latest_summary": "Onboarded into OctoPulse status tracking. The repo is on main at 099df68, tracking origin/main and ahead by 1 commit, with pending ticket bundle and itc_pipeline framework changes. Non-live pytest verification passed: 75 passed, 8 live API tests deselected. OctoPulse validation and scanning passed.",
+        "next_action": "Review, stage, commit, and push the pending pipeline/framework changes; refresh canonical ticket analysis artifacts before relying on data/reports/report.md as the current report.",
+        "git": {
+          "branch": "main",
+          "dirty": true,
+          "remote_tracking": "origin/main",
+          "commit": "099df68",
+          "status": "## main...origin/main [ahead 1]",
+          "remote": "origin https://lindav%40sea.com@git.insea.io/lindav/it-center-agent-101.git"
+        },
+        "verification": {
+          "status": "partial",
+          "last_commands": [
+            "git status --short --branch",
+            "git branch -vv",
+            "PYTHONDONTWRITEBYTECODE=1 pipenv run pytest -m \"not api_call\" -q",
+            "PYTHONDONTWRITEBYTECODE=1 python /Users/lindav/git/OctoPulse/tools/validate_status.py '/Users/lindav/git/Sea-Enterprise/IT Center Agent 101/.ai/status.json'",
+            "PYTHONDONTWRITEBYTECODE=1 python tools/scan_projects.py"
+          ],
+          "last_verified_at": "2026-05-13T16:24:10+08:00"
+        },
+        "attention": [
+          "Working tree has modified and untracked implementation files.",
+          "Local main is ahead of origin/main by 1 commit.",
+          "Live API tests were deselected and not run.",
+          "data/ticket_pipeline/analysis_summary.json is not present in the working tree."
+        ]
+      },
+      "derived_status": "needs_attention",
+      "derived_reasons": [],
+      "validation_errors": [],
+      "git": {
+        "available": true,
+        "branch": "main",
+        "dirty": true,
+        "remote_tracking": "origin/main",
+        "commit": "099df68",
         "errors": []
       }
     }
