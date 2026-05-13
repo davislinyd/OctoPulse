@@ -150,3 +150,15 @@ At the end of non-trivial project work, update that project's:
 - `.ai/status.json`
 
 Then run OctoPulse scanning from this repository to refresh the central outputs.
+
+## Codex Reminder Hook
+
+OctoPulse includes a Codex `UserPromptSubmit` helper:
+
+```text
+tools/octopulse_codex_hook.py
+```
+
+The hook reads Codex hook JSON from stdin, checks the current `cwd`, and returns `additionalContext` only when the current project is managed by OctoPulse or already has OctoPulse status files.
+
+It does not block work, edit project files, read source code, or regenerate central outputs. It only reminds the agent to update project-local status files at the end of non-trivial work.

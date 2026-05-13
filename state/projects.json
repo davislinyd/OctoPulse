@@ -1,5 +1,5 @@
 {
-  "scan_timestamp": "2026-05-13T14:03:47+08:00",
+  "scan_timestamp": "2026-05-13T14:06:50+08:00",
   "repo_root": "/Users/lindav/git/OctoPulse",
   "projects": [
     {
@@ -10,7 +10,7 @@
       "declared": {
         "name": "Example Project",
         "path": "/Users/lindav/git/OctoPulse/examples/example-project",
-        "last_updated": "2026-05-11T12:14:46+08:00",
+        "last_updated": "2026-05-13T14:06:37+08:00",
         "phase": "planning",
         "health": "active",
         "status_confidence": "high",
@@ -19,32 +19,31 @@
         "latest_summary": "The sample project demonstrates the required status file shape and lets a fresh scan complete immediately.",
         "next_action": "Replace the sample entry with real project entries in projects.yaml.",
         "git": {
-          "branch": "none",
-          "dirty": false,
+          "branch": "main",
+          "dirty": true,
           "remote_tracking": null,
-          "commit": "none"
+          "commit": ""
         },
         "verification": {
-          "status": "not_run",
-          "last_commands": [],
-          "last_verified_at": null
+          "status": "passed",
+          "last_commands": [
+            "PYTHONDONTWRITEBYTECODE=1 python tools/validate_status.py examples/example-project/.ai/status.json",
+            "PYTHONDONTWRITEBYTECODE=1 python tools/scan_projects.py"
+          ],
+          "last_verified_at": "2026-05-13T14:06:37+08:00"
         },
         "attention": []
       },
-      "derived_status": "stale",
-      "derived_reasons": [
-        "last_updated is older than 24 hours."
-      ],
+      "derived_status": "active",
+      "derived_reasons": [],
       "validation_errors": [],
       "git": {
         "available": true,
         "branch": "main",
         "dirty": true,
         "remote_tracking": null,
-        "commit": null,
-        "errors": [
-          "fatal: Needed a single revision"
-        ]
+        "commit": "b17dd50",
+        "errors": []
       }
     }
   ]
