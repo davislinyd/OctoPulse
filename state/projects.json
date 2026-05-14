@@ -1,5 +1,5 @@
 {
-  "scan_timestamp": "2026-05-13T16:42:15+08:00",
+  "scan_timestamp": "2026-05-14T14:02:10+08:00",
   "repo_root": "/Users/lindav/git/OctoPulse",
   "projects": [
     {
@@ -53,6 +53,287 @@
         "dirty": true,
         "remote_tracking": "origin/main",
         "commit": "099df68",
+        "errors": []
+      }
+    },
+    {
+      "name": "IT Center Boss Portal",
+      "path": "/Users/lindav/git/Chromium Broswer Plugins/IT Center Boss Portal",
+      "status_file": "/Users/lindav/git/Chromium Broswer Plugins/IT Center Boss Portal/.ai/status.json",
+      "detail_file": "/Users/lindav/git/Chromium Broswer Plugins/IT Center Boss Portal/PROJECT_STATUS.md",
+      "declared": {
+        "name": "IT Center Boss Portal",
+        "path": "/Users/lindav/git/Chromium Broswer Plugins/IT Center Boss Portal",
+        "last_updated": "2026-05-13T16:47:35+08:00",
+        "phase": "maintenance",
+        "health": "needs_attention",
+        "status_confidence": "medium",
+        "status_source": "agent_reported",
+        "current_goal": "Keep the MV3 IT Center Boss Portal extension visible in OctoPulse with source runtime files, dist bundle state, and GitLab remote state clearly recorded.",
+        "latest_summary": "Onboarded into OctoPulse status tracking. The repo is on main at 2991ee9 tracking insea/main. Version 1.3.0 is mirrored between manifest.json and dist/manifest.json; runtime JS syntax checks and dist mirror checks passed. The working tree has untracked docs/screenshot files.",
+        "next_action": "Review whether to stage or discard the untracked docs/screenshot files, then run a quick IT Center production smoke test for Boss toggle and popup Save behavior before the next release.",
+        "git": {
+          "branch": "main",
+          "dirty": true,
+          "remote_tracking": "insea/main",
+          "commit": "2991ee9",
+          "status": "## main...insea/main; untracked: PROMO.zh-TW.md, SIMPLE_USAGE_GUIDE.md, screenshot/boss-portal-real.png",
+          "remote": "insea git@git.insea.io:lindav/it-center-boss-portal.git"
+        },
+        "verification": {
+          "status": "partial",
+          "last_commands": [
+            "git status --short --branch",
+            "git remote -v",
+            "git branch -vv",
+            "node -e \"const src=require('./manifest.json'); const dist=require('./dist/manifest.json'); if (src.version !== dist.version) throw new Error('version mismatch: '+src.version+' vs '+dist.version); console.log('manifest versions match '+src.version);\"",
+            "for file in content/itcenter-portal-inject.js popup.js options.js options-shared.js background/service-worker.js; do node -c \"$file\" || exit 1; done",
+            "for file in manifest.json popup.html popup.js options.html options.js options-shared.js background/service-worker.js content/itcenter-portal-inject.js icons/icon16.png icons/icon48.png icons/icon128.png; do cmp -s \"$file\" \"dist/$file\" || { printf 'dist mismatch: %s\\n' \"$file\"; exit 1; }; done; printf 'dist runtime mirror ok\\n'",
+            "git diff --check"
+          ],
+          "last_verified_at": "2026-05-13T16:47:35+08:00"
+        },
+        "attention": [
+          "Working tree has untracked docs/screenshot files.",
+          "Production smoke test on IT Center was not run in this update.",
+          "Runtime/code changes still require version bump, dist rebuild, release zip, tag, push, and GitLab Release asset."
+        ]
+      },
+      "derived_status": "needs_attention",
+      "derived_reasons": [],
+      "validation_errors": [],
+      "git": {
+        "available": true,
+        "branch": "main",
+        "dirty": true,
+        "remote_tracking": "insea/main",
+        "commit": "2991ee9",
+        "errors": []
+      }
+    },
+    {
+      "name": "Chromium Browser End Tasker",
+      "path": "/Users/lindav/git/Chromium Broswer Plugins/Chromium Browser End Tasker",
+      "status_file": "/Users/lindav/git/Chromium Broswer Plugins/Chromium Browser End Tasker/.ai/status.json",
+      "detail_file": "/Users/lindav/git/Chromium Broswer Plugins/Chromium Browser End Tasker/PROJECT_STATUS.md",
+      "declared": {
+        "name": "Chromium Browser End Tasker",
+        "path": "/Users/lindav/git/Chromium Broswer Plugins/Chromium Browser End Tasker",
+        "last_updated": "2026-05-13T16:49:17+08:00",
+        "phase": "maintenance",
+        "health": "needs_attention",
+        "status_confidence": "medium",
+        "status_source": "agent_reported",
+        "current_goal": "Maintain a Chromium MV3 extension that ends tab processes, restores ended tabs by reload, and automates idle-tab End Task rules in supported Chromium developer builds.",
+        "latest_summary": "Extension version 1.0.4 is present with popup controls, background commands and alarms, auto End Task rules, title-prefix injection, icons, and a test-load scaffold. OctoPulse status files were onboarded. The worktree has untracked .ai/status.json, PROJECT_STATUS.md, and BROCHURE_zh-TW.md files, and main has no configured upstream.",
+        "next_action": "Review and commit the new OctoPulse status files if accepted; decide whether BROCHURE_zh-TW.md should be committed, ignored, or removed; then optionally load the extension in Chrome Dev for runtime verification.",
+        "git": {
+          "branch": "main",
+          "dirty": true,
+          "remote_tracking": null,
+          "commit": "d90de69",
+          "status_short": "## main; ?? .ai/; ?? BROCHURE_zh-TW.md; ?? PROJECT_STATUS.md"
+        },
+        "verification": {
+          "status": "partial",
+          "last_commands": [
+            "git status --short --branch",
+            "git branch --show-current",
+            "git rev-parse --short HEAD",
+            "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
+            "python -m json.tool manifest.json >/dev/null",
+            "python -m json.tool test-load/manifest.json >/dev/null"
+          ],
+          "last_verified_at": "2026-05-13T16:45:59+08:00"
+        },
+        "attention": [
+          ".ai/status.json and PROJECT_STATUS.md are newly created and untracked until staged or committed.",
+          "BROCHURE_zh-TW.md is untracked.",
+          "main has no configured upstream branch.",
+          "Runtime extension behavior was not re-verified in Chrome Dev during this status update."
+        ]
+      },
+      "derived_status": "needs_attention",
+      "derived_reasons": [],
+      "validation_errors": [],
+      "git": {
+        "available": true,
+        "branch": "main",
+        "dirty": true,
+        "remote_tracking": null,
+        "commit": "d90de69",
+        "errors": []
+      }
+    },
+    {
+      "name": "IT Copilot",
+      "path": "/Users/lindav/git/Sea-Enterprise/IT Copilot",
+      "status_file": "/Users/lindav/git/Sea-Enterprise/IT Copilot/.ai/status.json",
+      "detail_file": "/Users/lindav/git/Sea-Enterprise/IT Copilot/PROJECT_STATUS.md",
+      "declared": {
+        "name": "IT Copilot",
+        "path": "/Users/lindav/git/Sea-Enterprise/IT Copilot",
+        "last_updated": "2026-05-13T16:46:48+08:00",
+        "phase": "verification",
+        "health": "needs_attention",
+        "status_confidence": "medium",
+        "status_source": "agent_reported",
+        "current_goal": "Maintain an Agent Portal-scoped Manifest V3 Chrome extension that shows read-only ticket summaries, deterministic SOP Check, and hidden placeholder AI mode from the repo-built dist folder.",
+        "latest_summary": "Automated data validation, SOP validation, and build passed on main at 2f1d51f. The generated dist manifest keeps host_permissions scoped to https://itcenter.sea.com/agent/* and content_scripts.matches scoped to https://itcenter.sea.com/*. The worktree remains dirty with uncommitted SOP Check and ticket UI source/docs changes plus untracked PRD.md, scripts/validate-sop.mjs, and src/sop/.",
+        "next_action": "Review and commit the current intended changes, then reload /Users/lindav/git/Sea-Enterprise/IT Copilot/dist in Chrome and run the manual Agent Portal/User Portal route checks.",
+        "git": {
+          "branch": "main",
+          "dirty": true,
+          "remote_tracking": null,
+          "commit": "2f1d51f",
+          "notes": "No git remote or upstream configured for main."
+        },
+        "verification": {
+          "status": "partial",
+          "last_commands": [
+            "git status --short --branch",
+            "git branch --show-current",
+            "git rev-parse --short HEAD",
+            "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
+            "git remote -v",
+            "npm run validate:data",
+            "npm run validate:sop",
+            "npm run build",
+            "sed -n '1,220p' dist/manifest.json"
+          ],
+          "last_verified_at": "2026-05-13T16:46:48+08:00",
+          "notes": "Automated validations and build passed; manual Chrome extension reload and live IT Center checks were not run."
+        },
+        "attention": [
+          "No git remote or upstream is configured for main.",
+          "Worktree has uncommitted source/docs changes and untracked project artifacts.",
+          "Manual Chrome extension reload and Agent/User Portal SPA route checks still need to be run."
+        ]
+      },
+      "derived_status": "needs_attention",
+      "derived_reasons": [],
+      "validation_errors": [],
+      "git": {
+        "available": true,
+        "branch": "main",
+        "dirty": true,
+        "remote_tracking": null,
+        "commit": "2f1d51f",
+        "errors": []
+      }
+    },
+    {
+      "name": "SeaTalk Event Callback Server",
+      "path": "/Users/lindav/git/Sea-Enterprise/SeaTalk Event Callback Server",
+      "status_file": "/Users/lindav/git/Sea-Enterprise/SeaTalk Event Callback Server/.ai/status.json",
+      "detail_file": "/Users/lindav/git/Sea-Enterprise/SeaTalk Event Callback Server/PROJECT_STATUS.md",
+      "declared": {
+        "name": "SeaTalk Event Callback Server",
+        "path": "/Users/lindav/git/Sea-Enterprise/SeaTalk Event Callback Server",
+        "last_updated": "2026-05-13T16:50:15+08:00",
+        "phase": "maintenance",
+        "health": "needs_attention",
+        "status_confidence": "high",
+        "status_source": "agent_reported",
+        "current_goal": "Maintain the local FastAPI callback receiver for SeaTalk Open Platform events, including verification, signature validation, SQLite persistence, bot help aliases, the /list interactive-message framework, and repo-local handoff docs.",
+        "latest_summary": "Full pytest verification passes on the current dirty checkout, but the live launchd callback service is not running: localhost /healthz on port 8080 failed to connect and launchctl produced no seatalk-callback-server job output.",
+        "next_action": "Review and package the existing dirty worktree changes, then start or restart seatalk-callback-server if live callbacks are required and verify /healthz plus callback logs.",
+        "git": {
+          "branch": "main",
+          "dirty": true,
+          "remote_tracking": null,
+          "commit": "632e3d6",
+          "remote_present": false
+        },
+        "verification": {
+          "status": "partial",
+          "last_commands": [
+            "git status --short --branch",
+            "git remote -v",
+            "git rev-parse --short HEAD",
+            ".venv/bin/python -m pytest",
+            ".venv/bin/python -m pytest tests/test_agent_docs_layout.py",
+            "curl -sS http://127.0.0.1:8080/healthz",
+            "launchctl print gui/$(id -u)/seatalk-callback-server",
+            "python /Users/lindav/git/OctoPulse/tools/validate_status.py /Users/lindav/git/Sea-Enterprise/SeaTalk\\ Event\\ Callback\\ Server/.ai/status.json",
+            "cd /Users/lindav/git/OctoPulse && python tools/scan_projects.py"
+          ],
+          "last_verified_at": "2026-05-13T16:50:15+08:00"
+        },
+        "attention": [
+          "Live callback service is not running on 127.0.0.1:8080.",
+          "Worktree has existing tracked modifications and untracked artifacts.",
+          "No git remote or upstream is configured."
+        ]
+      },
+      "derived_status": "needs_attention",
+      "derived_reasons": [],
+      "validation_errors": [],
+      "git": {
+        "available": true,
+        "branch": "main",
+        "dirty": true,
+        "remote_tracking": null,
+        "commit": "632e3d6",
+        "errors": []
+      }
+    },
+    {
+      "name": "Ping Pong",
+      "path": "/Users/lindav/git/Ping Pong",
+      "status_file": "/Users/lindav/git/Ping Pong/.ai/status.json",
+      "detail_file": "/Users/lindav/git/Ping Pong/PROJECT_STATUS.md",
+      "declared": {
+        "name": "Ping Pong",
+        "path": "/Users/lindav/git/Ping Pong",
+        "last_updated": "2026-05-14T14:01:05+08:00",
+        "phase": "maintenance",
+        "health": "stable",
+        "status_confidence": "high",
+        "status_source": "agent_reported",
+        "current_goal": "Maintain the single-node intranet speed-test service with verified browser-scoped Recent Results, user-owned result deletion, multi-stat throughput reporting, current-test accumulated transfer display, Web Worker speed-test execution, current documentation, local production health, and OctoPulse visibility.",
+        "latest_summary": "Fastify + React intranet speed-test app now runs the speed-test body in a module Web Worker and terminates that Worker after completion, Retest, error, or unmount so test-time heap, timers, upload buffers, sampler arrays, AbortController state, and stream-reader references can be released without reloading the page. The old sessionStorage snapshot and scheduled reload flow were removed. README now documents the accumulated Total Download / Total Upload Mb row, the Worker/no-reload memory behavior, and that accumulated transfer is current-test UI state only. Completion summary, Download/Upload Mbps, accumulated Mb, and browser-scoped Recent Results stay on the current page. The update passed typecheck, Vitest (6 files / 45 tests), build, production service restart, /api/health, /api/active-tests, browser flow verification, docs/status validation, and OctoPulse scanning. The project is on main with no configured remote; this delivery is a local git commit only.",
+        "next_action": "Configure the intended GitLab remote before push/release workflows; update .env or Admin Console runtime settings if the live service should use the documented 15s default duration.",
+        "git": {
+          "branch": "main",
+          "dirty": false,
+          "remote_tracking": null,
+          "commit": ""
+        },
+        "verification": {
+          "status": "passed",
+          "last_commands": [
+            "git status --short --branch",
+            "npm run typecheck",
+            "npm test",
+            "npm run build",
+            "kill 41016 41145",
+            "curl -sS http://127.0.0.1:8080/api/health",
+            "curl -sS http://127.0.0.1:8080/api/config",
+            "Browser smoke: completed test stays on the same page after a 6s delay, accumulated Mb remains visible, Retest resets values to 0.00 Mb and starts a new Worker run, the next completion remains visible, and Worker-related console errors are absent",
+            "curl -sS http://127.0.0.1:8080/api/active-tests",
+            "git diff --check",
+            "python /Users/lindav/git/OctoPulse/tools/validate_status.py /Users/lindav/git/Ping\\ Pong/.ai/status.json",
+            "python tools/scan_projects.py"
+          ],
+          "last_verified_at": "2026-05-14T14:01:05+08:00",
+          "notes": "Post-test browser memory release is implemented by isolating speed-test execution in a module Web Worker and terminating the Worker after completion, Retest, error, or unmount. The page no longer reloads or uses sessionStorage snapshots. README documents accumulated Mb and Worker/no-reload behavior. Browser smoke on port 8080 observed completion summary and accumulated Mb still visible after a 6s delay, Retest resetting values to 0.00 Mb and starting a new run, the next completion staying on-page, no Worker-related console errors, /api/health healthy, and activeTests returning to 0. Live config on port 8080 still reports defaultTestDurationSeconds: 8 because existing runtime settings override the documented 15s default."
+        },
+        "attention": [
+          "Git repo exists on main with no configured remote or upstream, so this delivery is local-only until a remote is added.",
+          "Live runtime still reports defaultTestDurationSeconds: 8; update .env or Admin Console runtime settings if the service should use the new 15s default.",
+          "Local self-tests still show a warning because they are not real intranet measurements, but they now remain visible in the browser/device owner's personal Recent Results."
+        ]
+      },
+      "derived_status": "stable",
+      "derived_reasons": [],
+      "validation_errors": [],
+      "git": {
+        "available": true,
+        "branch": "main",
+        "dirty": false,
+        "remote_tracking": null,
+        "commit": "4180975",
         "errors": []
       }
     }
