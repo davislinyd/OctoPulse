@@ -78,20 +78,17 @@ install_skill() {
 }
 
 if [ "$AGENT" = "auto" ]; then
-  if [ -d "${CODEX_HOME:-$HOME/.codex}" ]; then
+  if [ -d "$HOME/.agents" ]; then
     AGENT="codex"
   elif [ -d "$HOME/.claude" ]; then
     AGENT="claude"
-  elif [ -d "$HOME/.agents" ]; then
-    AGENT="antigravity"
   else
     echo "no supported Agent home found; rerun with --agent codex|claude|antigravity" >&2
     exit 1
   fi
 fi
 
-if [ "$AGENT" = "all" ] || [ "$AGENT" = "codex" ]; then install_skill "${CODEX_HOME:-$HOME/.codex}/skills/octopulse"; fi
+if [ "$AGENT" = "all" ] || [ "$AGENT" = "codex" ] || [ "$AGENT" = "antigravity" ]; then install_skill "$HOME/.agents/skills/octopulse"; fi
 if [ "$AGENT" = "all" ] || [ "$AGENT" = "claude" ]; then install_skill "$HOME/.claude/skills/octopulse"; fi
-if [ "$AGENT" = "all" ] || [ "$AGENT" = "antigravity" ]; then install_skill "$HOME/.agents/skills/octopulse"; fi
 
 echo "OctoPulse installed. Add $OCTOPULSE_HOME/bin to PATH, then run: octopulse context"
