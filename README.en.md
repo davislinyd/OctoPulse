@@ -15,13 +15,13 @@ OctoPulse v2.0 is a lightweight project-progress system for AI-assisted developm
 
 ## Install
 
-Install the latest GitHub Release and automatically add detected Codex, Claude Code, or Antigravity global skills:
+Install the latest GitHub Release. In `auto` mode, the installer chooses one detected global-skill location in Codex, Claude Code, Antigravity priority order, preventing duplicate skills in shared loaders:
 
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh
 ```
 
-Install all three adapters:
+Install all three adapters only when the platforms do not share a skill loader:
 
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent all
