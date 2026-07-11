@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 560" role="img" aria-labelledby="title desc">
+  <title id="title">OctoPulse marker-based data flow</title>
+  <desc id="desc">An agent checks the current Git project, reads its small marker, and updates it only when status changes. A separate report command scans registered roots and renders reports. Archived projects create a stale marker without reading source code.</desc>
+  <style>
+    :root { --canvas: #f8fafc; --panel: #ffffff; --ink: #172033; --muted: #526177; --line: #8a99ad; --accent: #0f766e; --accent-soft: #d8f3ee; --stale: #9a6700; --stale-soft: #fff0c2; }
+    @media (prefers-color-scheme: dark) { :root { --canvas: #121820; --panel: #1c2633; --ink: #e6edf5; --muted: #b4c1d1; --line: #718198; --accent: #48c8b8; --accent-soft: #173f3a; --stale: #f5c451; --stale-soft: #493a12; } }
+    .bg { fill: var(--canvas); }
+    .node { fill: var(--panel); stroke: var(--line); stroke-width: 2; }
+    .active { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2.5; }
+    .archive { fill: var(--stale-soft); stroke: var(--stale); stroke-width: 2.5; }
+    .flow { fill: none; stroke: var(--line); stroke-width: 2.5; marker-end: url(#arrow); }
+    .accent-flow { fill: none; stroke: var(--accent); stroke-width: 3; marker-end: url(#accent-arrow); }
+    text { font-family: ui-sans-serif, system-ui, sans-serif; fill: var(--ink); }
+    .label { font-size: 20px; font-weight: 500; }
+    .detail { font-size: 15px; fill: var(--muted); }
+    .small { font-size: 14px; fill: var(--muted); }
+    .caption { font-size: 16px; font-weight: 500; fill: var(--muted); letter-spacing: .08em; }
+  </style>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--line)"/></marker>
+    <marker id="accent-arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/></marker>
+  </defs>
+  <rect class="bg" width="1040" height="560" rx="20"/>
+
+  <text class="caption" x="60" y="54">PROJECT SESSION / 專案工作階段</text>
+  <rect class="node" x="60" y="86" width="210" height="118" rx="14"/>
+  <text class="label" x="88" y="128">Agent session</text>
+  <text class="detail" x="88" y="156">Agent 工作階段</text>
+  <text class="small" x="88" y="181">Git root only</text>
+
+  <path class="flow" d="M270 145 H330"/>
+  <rect class="active" x="330" y="86" width="250" height="118" rx="14"/>
+  <text class="label" x="358" y="128">octopulse context</text>
+  <text class="detail" x="358" y="156">Read .otcopulse only</text>
+  <text class="small" x="358" y="181">只讀取 marker 與 Git 事實</text>
+
+  <path class="accent-flow" d="M580 145 H660"/>
+  <rect class="node" x="660" y="86" width="320" height="118" rx="14"/>
+  <text class="label" x="688" y="128">Status changed?</text>
+  <text class="detail" x="688" y="156">是否有實質狀態變化？</text>
+  <text class="small" x="688" y="181">No → keep marker unchanged</text>
+
+  <path class="accent-flow" d="M820 204 V270"/>
+  <text class="small" x="836" y="244">yes / 是</text>
+  <rect class="active" x="660" y="270" width="320" height="126" rx="14"/>
+  <text class="label" x="688" y="312">.otcopulse</text>
+  <text class="detail" x="688" y="340">≤ 4 KiB structured pulse</text>
+  <text class="small" x="688" y="367">Validate after an update</text>
+
+  <rect class="archive" x="330" y="270" width="250" height="126" rx="14"/>
+  <text class="label" x="358" y="312">Archive project</text>
+  <text class="detail" x="358" y="340">封存過舊專案</text>
+  <text class="small" x="358" y="367">paused / stale, no source read</text>
+  <path class="flow" d="M580 333 H660"/>
+
+  <text class="caption" x="60" y="440">CROSS-PROJECT REPORT / 跨專案報表</text>
+  <rect class="node" x="60" y="460" width="240" height="76" rx="14"/>
+  <text class="label" x="86" y="501">Registered roots</text>
+  <text class="detail" x="86" y="528">受信任掃描根目錄</text>
+
+  <path class="flow" d="M300 497 H380"/>
+  <rect class="node" x="380" y="460" width="260" height="76" rx="14"/>
+  <text class="label" x="406" y="501">report script</text>
+  <text class="detail" x="406" y="528">markers + Git facts + cache</text>
+
+  <path class="flow" d="M640 497 H720"/>
+  <rect class="node" x="720" y="460" width="260" height="76" rx="14"/>
+  <text class="label" x="746" y="501">JSON · Markdown · HTML</text>
+  <text class="detail" x="746" y="528">腳本產生的報表</text>
+</svg>
