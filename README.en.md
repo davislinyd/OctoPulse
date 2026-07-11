@@ -2,7 +2,7 @@
 
 [繁體中文](README.md) · [English](README.en.md)
 
-OctoPulse v2.0 is a lightweight project-progress system for AI-assisted development. Each tracked Git project keeps one small `.otcopulse` file, so an agent can recover reliable status without rereading source code, conversation history, or every project report.
+OctoPulse v2.0.1 is a lightweight project-progress system for AI-assisted development. Each tracked Git project keeps one small `.otcopulse` file, so an agent can recover reliable status without rereading source code, conversation history, or every project report.
 
 ![OctoPulse data flow](docs/octopulse-flow.svg)
 
@@ -27,7 +27,7 @@ Install all adapters only when Claude Code is also required; Codex and Antigravi
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent all
 ```
 
-The installer verifies the release archive SHA-256. Add `$OCTOPULSE_HOME/bin` to `PATH` as instructed, then verify the version:
+The installer verifies the release archive SHA-256 and attempts to create `~/.local/bin/octopulse`; that directory is commonly already on `PATH`. If another command already occupies that path, the installer leaves it untouched and prints the `$OCTOPULSE_HOME/bin` PATH fallback. Then verify the version:
 
 ```sh
 octopulse --version

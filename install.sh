@@ -51,7 +51,7 @@ fi
 
 RUNTIME="$OCTOPULSE_HOME/runtime/$RUNTIME_VERSION"
 mkdir -p "$OCTOPULSE_HOME/runtime" "$OCTOPULSE_HOME/bin"
-if [ -e "$RUNTIME" ] && [ "$FORCE" -ne 1 ]; then
+if [ -e "$RUNTIME" ] && [ "$VERSION" != "latest" ] && [ "$FORCE" -ne 1 ]; then
   echo "$RUNTIME already exists; rerun with --force after review" >&2
   exit 1
 fi
@@ -63,6 +63,25 @@ cat > "$OCTOPULSE_HOME/bin/octopulse" <<EOF
 exec python3 "$RUNTIME/tools/octopulse.py" "\$@"
 EOF
 chmod +x "$OCTOPULSE_HOME/bin/octopulse"
+
+CLI_COMMAND="$OCTOPULSE_HOME/bin/octopulse"
+LOCAL_BIN="${XDG_BIN_HOME:-$HOME/.local/bin}"
+LOCAL_COMMAND="$LOCAL_BIN/octopulse"
+mkdir -p "$LOCAL_BIN"
+if [ -e "$LOCAL_COMMAND" ] || [ -L "$LOCAL_COMMAND" ]; then
+  if [ -L "$LOCAL_COMMAND" ] && [ "$(readlink "$LOCAL_COMMAND")" = "$CLI_COMMAND" ]; then
+    :
+  elif [ "$FORCE" -eq 1 ]; then
+    rm -f "$LOCAL_COMMAND"
+  else
+    echo "$LOCAL_COMMAND already exists; leaving it unchanged" >&2
+    LOCAL_COMMAND=""
+  fi
+fi
+if [ -n "$LOCAL_COMMAND" ]; then
+  ln -sfn "$CLI_COMMAND" "$LOCAL_COMMAND"
+  CLI_COMMAND="$LOCAL_COMMAND"
+fi
 
 install_skill() {
   target="$1"
@@ -91,4 +110,8 @@ fi
 if [ "$AGENT" = "all" ] || [ "$AGENT" = "codex" ] || [ "$AGENT" = "antigravity" ]; then install_skill "$HOME/.agents/skills/octopulse"; fi
 if [ "$AGENT" = "all" ] || [ "$AGENT" = "claude" ]; then install_skill "$HOME/.claude/skills/octopulse"; fi
 
-echo "OctoPulse installed. Add $OCTOPULSE_HOME/bin to PATH, then run: octopulse context"
+"$CLI_COMMAND" --version
+case ":$PATH:" in
+  *":$LOCAL_BIN:"*) echo "OctoPulse installed. Run: octopulse context" ;;
+  *) echo "OctoPulse installed. Add $LOCAL_BIN or $OCTOPULSE_HOME/bin to PATH, then run: octopulse context" ;;
+esac

@@ -13,7 +13,7 @@ from typing import Any, Iterable
 
 
 VERSION = 2
-RELEASE_VERSION = "2.0"
+RELEASE_VERSION = "2.0.1"
 MARKER_NAME = ".otcopulse"
 MAX_MARKER_BYTES = 4096
 PHASES = {"planning", "implementation", "verification", "maintenance", "paused"}

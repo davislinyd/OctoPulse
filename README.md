@@ -2,7 +2,7 @@
 
 [繁體中文](README.md) · [English](README.en.md)
 
-OctoPulse v2.0 是為 AI 輔助開發設計的輕量專案進度系統。每個要追蹤的 Git 專案只保留一個很小的 `.otcopulse`，讓 Agent 取得可靠進度時不必重新閱讀原始碼、歷史紀錄或所有專案報表。
+OctoPulse v2.0.1 是為 AI 輔助開發設計的輕量專案進度系統。每個要追蹤的 Git 專案只保留一個很小的 `.otcopulse`，讓 Agent 取得可靠進度時不必重新閱讀原始碼、歷史紀錄或所有專案報表。
 
 ![OctoPulse 資料流程](docs/octopulse-flow.svg)
 
@@ -27,7 +27,7 @@ curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/inst
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent all
 ```
 
-安裝器會驗證 release archive 的 SHA-256。依終端輸出將 `$OCTOPULSE_HOME/bin` 加入 `PATH`，再確認版本：
+安裝器會驗證 release archive 的 SHA-256，並嘗試在 `~/.local/bin/octopulse` 建立 wrapper；此目錄通常已在 PATH。若該位置已有其他指令，安裝器不會覆寫，會改為輸出 `$OCTOPULSE_HOME/bin` 的 PATH 設定方式。再確認版本：
 
 ```sh
 octopulse --version
