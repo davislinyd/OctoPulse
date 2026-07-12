@@ -54,6 +54,23 @@ LABELS = {
         "unknown": "未知",
         "none": "無",
         "projects": "專案",
+        "portfolio_title": "專案進度。\n一眼掌握。",
+        "project_title": "專案脈衝。\n清楚掌握。",
+        "on_track": "進展順利",
+        "needs_attention": "需要注意",
+        "at_risk": "受阻風險",
+        "on_hold": "暫停追蹤",
+        "attention_required": "優先處理",
+        "open_project": "查看專案",
+        "back_overview": "返回總覽",
+        "last_activity": "最後活動",
+        "activity_30d": "近 30 天活動",
+        "recent_activity": "近期活動",
+        "git_facts": "Git 事實",
+        "commits": "近期提交",
+        "project_state": "專案狀態",
+        "no_projects": "尚未有可顯示的專案。",
+        "no_activity": "尚無活動資料",
     },
     "en": {
         "project_report": "OctoPulse Project Report",
@@ -83,6 +100,23 @@ LABELS = {
         "unknown": "Unknown",
         "none": "None",
         "projects": "Projects",
+        "portfolio_title": "Project progress.\nAt a glance.",
+        "project_title": "Project pulse.\nIn focus.",
+        "on_track": "On track",
+        "needs_attention": "Needs attention",
+        "at_risk": "At risk",
+        "on_hold": "On hold",
+        "attention_required": "Needs attention",
+        "open_project": "Open project",
+        "back_overview": "Back to overview",
+        "last_activity": "Last activity",
+        "activity_30d": "Activity (30 days)",
+        "recent_activity": "Recent activity",
+        "git_facts": "Git facts",
+        "commits": "Recent commits",
+        "project_state": "Project state",
+        "no_projects": "No projects to display yet.",
+        "no_activity": "No activity recorded",
     },
 }
 
@@ -236,7 +270,7 @@ def record_activity(project_root: Path, tool: str, event: str, result: str | Non
 
 def _activity_summary(events: list[dict[str, str]]) -> dict[str, Any]:
     if not events:
-        return {"state": "unknown", "tools": []}
+        return {"state": "unknown", "tools": [], "recent_events": []}
     grouped: dict[str, dict[str, Any]] = {}
     for event in events:
         item = grouped.setdefault(event["tool"], {"tool": event["tool"], "sessions": 0, "last_used_at": event["timestamp"], "last_result": ""})
@@ -244,7 +278,7 @@ def _activity_summary(events: list[dict[str, str]]) -> dict[str, Any]:
         if event["event"] == "finish":
             item["sessions"] += 1
             item["last_result"] = event["result"]
-    return {"state": "recorded", "tools": sorted(grouped.values(), key=lambda item: item["tool"])}
+    return {"state": "recorded", "tools": sorted(grouped.values(), key=lambda item: item["tool"]), "recent_events": events[-MAX_ACTIVITY_EVENTS:]}
 
 
 def _signals(status: dict[str, Any] | None, git: dict[str, Any], legacy: dict[str, Any] | None) -> list[str]:
@@ -329,9 +363,43 @@ def project_markdown(snapshot: dict[str, Any], language: str) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _console_html(payload_data: dict[str, Any], language: str, single_project: bool) -> str:
+    payload = json.dumps(payload_data, ensure_ascii=False).replace("</", "<\\/")
+    translations = json.dumps(LABELS, ensure_ascii=False).replace("</", "<\\/")
+    return """<!doctype html>
+<html lang="__LANG__">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OctoPulse</title>
+<style>
+:root{color-scheme:light;--ink:#1d1d1f;--muted:#6e6e73;--line:#d2d2d7;--surface:#f5f5f7;--blue:#0071e3;--green:#1a9b5c;--amber:#e59600;--red:#d92d20;--gray:#a1a1a6;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif}*{box-sizing:border-box}body{margin:0;background:#fff;color:var(--ink);font-size:15px;line-height:1.45}.topbar{position:sticky;top:0;z-index:5;height:52px;display:flex;align-items:center;gap:28px;padding:0 max(24px,calc((100vw - 1240px)/2));background:rgba(255,255,255,.82);backdrop-filter:saturate(180%) blur(18px);border-bottom:1px solid rgba(0,0,0,.08)}.brand{font-size:20px;font-weight:650;letter-spacing:-.04em}.topbar button{min-height:36px;border:0;background:transparent;color:var(--muted);font:inherit;cursor:pointer}.topbar button:hover,.topbar button[aria-pressed="true"]{color:var(--blue)}.topbar button:focus-visible,.project-row:focus-visible,.attention:focus-visible{outline:3px solid rgba(0,113,227,.45);outline-offset:3px}.tools{margin-left:auto;display:flex;align-items:center;gap:4px}.updated{font-size:12px;color:var(--muted);white-space:nowrap}main{max-width:1240px;margin:0 auto;padding:64px 32px 88px}.hero{max-width:760px;margin-bottom:38px}.hero h1{margin:0;white-space:pre-line;font-size:clamp(44px,7vw,76px);letter-spacing:-.065em;line-height:.98;font-weight:650}.hero p{margin:22px 0 0;color:var(--muted);font-size:19px;max-width:610px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);margin:0 0 28px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.metric{min-height:112px;padding:24px 20px;border-right:1px solid var(--line)}.metric:last-child{border-right:0}.metric-value{display:flex;align-items:center;gap:10px;font-size:34px;line-height:1;font-weight:650;letter-spacing:-.04em}.metric-label{margin-top:10px;color:var(--muted);font-size:13px}.dot{display:inline-block;width:10px;height:10px;border-radius:50%;flex:0 0 auto}.active,.stable{background:var(--green)}.needs_attention{background:var(--amber)}.blocked{background:var(--red)}.stale,.unknown{background:var(--gray)}.attention{width:100%;display:grid;grid-template-columns:148px 1fr 1.35fr auto;gap:20px;align-items:center;padding:20px 24px;margin:0 0 34px;border:1px solid var(--line);border-left:5px solid var(--amber);border-radius:18px;background:#fff;text-align:left;font:inherit;cursor:pointer}.attention:hover{border-color:#aaa}.eyebrow{font-size:12px;color:var(--muted);margin-bottom:3px}.attention strong{font-size:17px}.attention-action{color:var(--blue);white-space:nowrap;font-weight:600}.section-head{display:flex;align-items:end;justify-content:space-between;margin:0 0 12px}.section-head h2{margin:0;font-size:24px;letter-spacing:-.03em}.section-head span{color:var(--muted);font-size:13px}.projects{border-top:1px solid var(--line)}.project-row{width:100%;display:grid;grid-template-columns:minmax(250px,2fr) minmax(100px,.75fr) minmax(150px,1fr) minmax(130px,.85fr) 116px 32px;gap:16px;align-items:center;padding:20px 8px;border:0;border-bottom:1px solid var(--line);background:#fff;text-align:left;font:inherit;color:inherit;cursor:pointer}.project-row:hover,.project-row[aria-current="true"]{background:#f5f9ff}.project-name{display:flex;align-items:flex-start;gap:12px}.project-name strong{display:block;font-size:17px;letter-spacing:-.02em}.project-name span{display:block;max-width:370px;margin-top:3px;color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cell-label{display:block;margin-bottom:3px;color:var(--muted);font-size:12px}.cell-value{display:block;font-size:13px}.verify{display:flex;gap:7px;align-items:center}.verify.passed{color:var(--green)}.verify.failed{color:var(--red)}.verify.not_run,.verify.partial{color:var(--amber)}.cadence{height:28px;display:flex;align-items:end;gap:2px}.cadence i{width:3px;min-height:2px;background:var(--blue);border-radius:3px 3px 0 0}.cadence.empty{align-items:center;color:var(--gray);font-size:18px}.chevron{color:var(--blue);font-size:25px;font-weight:300}.detail{margin-top:38px;padding:30px;border:1px solid var(--line);border-radius:24px;background:#fff;box-shadow:0 14px 40px rgba(0,0,0,.06)}.detail-top{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:28px}.detail-top h1{margin:0;font-size:38px;letter-spacing:-.045em}.detail-path{margin:6px 0 0;color:var(--muted);font-size:13px;overflow-wrap:anywhere}.back{border:0;background:transparent;color:var(--blue);font:inherit;font-weight:600;cursor:pointer;min-height:36px}.detail-grid{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:28px}.detail-section{min-width:0}.detail-section+ .detail-section{border-left:1px solid var(--line);padding-left:28px}.detail-section h2{margin:0 0 14px;font-size:17px;letter-spacing:-.02em}.fact{padding:11px 0;border-top:1px solid #e8e8ed}.fact:first-of-type{border-top:0;padding-top:0}.fact-label{display:block;color:var(--muted);font-size:12px}.fact-value{display:block;margin-top:3px;white-space:pre-line;overflow-wrap:anywhere}.risk-list,.commit-list,.tool-list{margin:0;padding:0;list-style:none}.risk-list li,.tool-list li{padding:8px 0;border-top:1px solid #e8e8ed}.risk-list li:first-child,.tool-list li:first-child{border-top:0}.commit-list li{padding:9px 0;border-top:1px solid #e8e8ed}.commit-list code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--blue)}.commit-time{display:block;color:var(--muted);font-size:12px;margin-top:2px}.empty{padding:28px 0;color:var(--muted)}@media(max-width:760px){.topbar{gap:12px;padding:0 16px}.brand{font-size:18px}.updated{display:none}main{padding:42px 18px 60px}.hero h1{font-size:48px}.hero p{font-size:17px}.metrics{grid-template-columns:1fr 1fr}.metric:nth-child(2){border-right:0}.metric:nth-child(-n+2){border-bottom:1px solid var(--line)}.metric{min-height:96px;padding:18px 12px}.attention{grid-template-columns:1fr;gap:10px;padding:18px}.attention-action{padding-top:4px}.project-row{grid-template-columns:1fr 34px;gap:12px;padding:18px 4px}.project-row .phase,.project-row .verification,.project-row .activity,.project-row .cadence-wrap{display:none}.detail{margin-top:28px;padding:22px 18px;border-radius:20px}.detail-top h1{font-size:32px}.detail-grid{grid-template-columns:1fr;gap:24px}.detail-section+.detail-section{border-left:0;border-top:1px solid var(--line);padding:24px 0 0}.tools button{font-size:13px}.topbar .overview-label{display:none}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+</style>
+<body>
+<header class="topbar"><div class="brand">OctoPulse</div><button id="overview" type="button" aria-pressed="true">Overview</button><div class="tools"><button id="zh" type="button">繁中</button><button id="en" type="button">EN</button><span class="updated" id="updated"></span></div></header>
+<main id="app"></main>
+<script>
+const data=__PAYLOAD__,labels=__LABELS__,singleProject=__SINGLE__,defaultLang="__LANG__";
+let lang=new URLSearchParams(location.search).get("lang")==="en"?"en":defaultLang;
+const t=()=>labels[lang]||labels["zh-TW"],escapeHtml=value=>{const node=document.createElement("span");node.textContent=value??"—";return node.innerHTML},projectKey=project=>project.project.path,projectStatus=project=>project.marker?.status||null,projectHealth=project=>projectStatus(project)?.health||project.state||project.marker?.state||"unknown";
+function stateProject(){return new URLSearchParams(location.hash.slice(1)).get("project")}function writeState(key,replace=false){const url=new URL(location);url.searchParams.set("lang",lang);url.hash=key?"project="+encodeURIComponent(key):"";history[replace?"replaceState":"pushState"](null,"",url);render()}
+function cadence(project){const events=project.activity?.recent_events||[];if(!events.length)return '<span class="cadence empty" aria-label="'+escapeHtml(t().no_activity)+'">—</span>';const now=Date.now(),day=86400000,buckets=Array(30).fill(0);events.forEach(event=>{const age=Math.floor((now-new Date(event.timestamp).getTime())/day);if(age>=0&&age<30)buckets[29-age]++});if(!buckets.some(Boolean))return '<span class="cadence empty" aria-label="'+escapeHtml(t().no_activity)+'">—</span>';const max=Math.max(...buckets);return '<span class="cadence" aria-label="'+escapeHtml(t().activity_30d)+'">'+buckets.map(value=>'<i style="height:'+Math.max(2,Math.round(value/max*26))+'px"></i>').join('')+'</span>'}
+function healthDot(health){return '<i class="dot '+escapeHtml(health)+'"></i>'}function verify(status){const value=status?.verification?.status||"unknown";return '<span class="verify '+escapeHtml(value)+'"><span>'+({passed:"✓",failed:"×",not_run:"•",partial:"•"}[value]||"—")+'</span>'+escapeHtml(value)+'</span>'}function firstTool(project){const tool=project.activity?.tools?.slice().sort((a,b)=>String(b.last_used_at).localeCompare(String(a.last_used_at)))[0];return tool?tool.tool+" · "+tool.last_used_at:t().no_activity}
+function counts(){const result={on_track:0,needs_attention:0,at_risk:0,on_hold:0};data.projects.forEach(project=>{const status=projectStatus(project),health=projectHealth(project);if(health==="blocked")result.at_risk++;else if(health==="needs_attention")result.needs_attention++;else if(health==="stale"||status?.phase==="paused")result.on_hold++;else result.on_track++});return result}
+function attentionProject(){return data.projects.find(project=>{const status=projectStatus(project);return status&&(projectHealth(project)==="blocked"||projectHealth(project)==="needs_attention"||(project.signals||[]).length)})}
+function renderMetrics(){const c=counts(),items=[["on_track","active"],["needs_attention","needs_attention"],["at_risk","blocked"],["on_hold","stale"]];return '<section class="metrics">'+items.map(([key,health])=>'<div class="metric"><div class="metric-value">'+healthDot(health)+c[key]+'</div><div class="metric-label">'+escapeHtml(t()[key])+'</div></div>').join('')+'</section>'}
+function renderAttention(project){if(!project)return '';const status=projectStatus(project),signal=(project.signals||[])[0]||projectHealth(project);return '<button class="attention" type="button" data-project="'+escapeHtml(projectKey(project))+'"><div><div class="eyebrow">'+escapeHtml(t().attention_required)+'</div><strong>'+escapeHtml(project.project.name)+'</strong></div><div><div class="eyebrow">'+escapeHtml(t().signals)+'</div><span>'+escapeHtml(signal)+'</span></div><div><div class="eyebrow">'+escapeHtml(t().next)+'</div><span>'+escapeHtml(status?.next_action||"—")+'</span></div><span class="attention-action">'+escapeHtml(t().open_project)+' ›</span></button>'}
+function renderRow(project){const status=projectStatus(project),health=projectHealth(project);if(!status)return '<button class="project-row" type="button" data-project="'+escapeHtml(projectKey(project))+'"><div class="project-name">'+healthDot(health)+'<div><strong>'+escapeHtml(project.project.name)+'</strong><span>'+escapeHtml(project.state||project.marker?.state||t().unknown)+'</span></div></div><span class="chevron">›</span></button>';return '<button class="project-row" type="button" data-project="'+escapeHtml(projectKey(project))+'" aria-current="false"><div class="project-name">'+healthDot(health)+'<div><strong>'+escapeHtml(project.project.name)+'</strong><span>'+escapeHtml(status.goal)+'</span></div></div><div class="phase"><span class="cell-label">'+escapeHtml(t().phase)+'</span><span class="cell-value">'+escapeHtml(status.phase)+'</span></div><div class="verification"><span class="cell-label">'+escapeHtml(t().verification)+'</span>'+verify(status)+'</div><div class="activity"><span class="cell-label">'+escapeHtml(t().last_activity)+'</span><span class="cell-value">'+escapeHtml(firstTool(project))+'</span></div><div class="cadence-wrap"><span class="cell-label">'+escapeHtml(t().activity_30d)+'</span>'+cadence(project)+'</div><span class="chevron">›</span></button>'}
+function overview(){const projects=data.projects||[];document.title="OctoPulse — "+t().overview;return '<section class="hero"><h1>'+escapeHtml(t().portfolio_title)+'</h1><p>'+escapeHtml(t().portfolio_report)+'</p></section>'+renderMetrics()+renderAttention(attentionProject())+'<div class="section-head"><h2>'+escapeHtml(t().projects)+'</h2><span>'+projects.length+'</span></div><section class="projects">'+(projects.length?projects.map(renderRow).join(''):'<div class="empty">'+escapeHtml(t().no_projects)+'</div>')+'</section>'}
+function facts(project,status){const git=project.git||{},worktree=git.worktree||{};return '<div class="detail-section"><h2>'+escapeHtml(t().git_facts)+'</h2><div class="fact"><span class="fact-label">'+escapeHtml(t().branch)+'</span><span class="fact-value">'+escapeHtml(git.branch||"—")+'</span></div><div class="fact"><span class="fact-label">'+escapeHtml(t().commit)+'</span><span class="fact-value">'+escapeHtml(git.commit||"—")+'</span></div><div class="fact"><span class="fact-label">'+escapeHtml(t().dirty)+'</span><span class="fact-value">'+escapeHtml(git.dirty?t().yes:t().no)+'</span></div><div class="fact"><span class="fact-label">'+escapeHtml(t().worktree)+'</span><span class="fact-value">'+escapeHtml([worktree.staged||0,worktree.unstaged||0,worktree.untracked||0].join(" / "))+'</span></div></div>'}
+function detail(project){const status=projectStatus(project),health=projectHealth(project);if(!status)return '<section class="detail"><button class="back" type="button" data-overview="true">‹ '+escapeHtml(t().back_overview)+'</button><div class="detail-top"><div><h1>'+escapeHtml(project.project.name)+'</h1><p class="detail-path">'+escapeHtml(project.project.path)+'</p></div></div><div class="empty">'+escapeHtml(project.state||project.marker?.state||t().unknown)+'</div></section>';const risks=(project.signals||[]),commits=project.history||[],tools=project.activity?.tools||[];document.title="OctoPulse — "+project.project.name;return '<section class="detail"><button class="back" type="button" data-overview="true">‹ '+escapeHtml(t().back_overview)+'</button><div class="detail-top"><div><h1>'+escapeHtml(project.project.name)+'</h1><p class="detail-path">'+escapeHtml(project.project.path)+'</p></div><div>'+healthDot(health)+' '+escapeHtml(health)+'</div></div><div class="detail-grid"><div class="detail-section"><h2>'+escapeHtml(t().overview)+'</h2><div class="fact"><span class="fact-label">'+escapeHtml(t().goal)+'</span><span class="fact-value">'+escapeHtml(status.goal)+'</span></div><div class="fact"><span class="fact-label">'+escapeHtml(t().summary)+'</span><span class="fact-value">'+escapeHtml(status.summary)+'</span></div><div class="fact"><span class="fact-label">'+escapeHtml(t().next)+'</span><span class="fact-value">'+escapeHtml(status.next_action)+'</span></div><div class="fact"><span class="fact-label">'+escapeHtml(t().verification)+'</span><span class="fact-value">'+verify(status)+'<br>'+escapeHtml(status.verification.last_command||"—")+'</span></div><h2>'+escapeHtml(t().signals)+'</h2><ul class="risk-list">'+(risks.length?risks.map(risk=>'<li>'+escapeHtml(risk)+'</li>').join(''):'<li>'+escapeHtml(t().none)+'</li>')+'</ul></div>'+facts(project,status)+'<div class="detail-section"><h2>'+escapeHtml(t().commits)+'</h2><ul class="commit-list">'+(commits.length?commits.map(commit=>'<li><code>'+escapeHtml(commit.commit)+'</code> '+escapeHtml(commit.subject)+'<span class="commit-time">'+escapeHtml(commit.committed_at)+'</span></li>').join(''):'<li>'+escapeHtml(t().none)+'</li>')+'</ul><h2>'+escapeHtml(t().recent_activity)+'</h2>'+cadence(project)+'<ul class="tool-list">'+(tools.length?tools.map(tool=>'<li><strong>'+escapeHtml(tool.tool)+'</strong><br><span class="commit-time">'+escapeHtml(String(tool.sessions))+' · '+escapeHtml(tool.last_used_at)+' · '+escapeHtml(tool.last_result||t().unknown)+'</span></li>').join(''):'<li>'+escapeHtml(t().no_activity)+'</li>')+'</ul></div></div></section>'}
+function bind(){document.querySelectorAll("[data-project]").forEach(button=>button.addEventListener("click",()=>writeState(button.dataset.project)));document.querySelectorAll("[data-overview]").forEach(button=>button.addEventListener("click",()=>writeState("")))}
+function render(){const text=t(),key=singleProject?projectKey(data.projects[0]):stateProject(),project=(data.projects||[]).find(item=>projectKey(item)===key);document.documentElement.lang=lang;document.getElementById("overview").textContent=text.overview;document.getElementById("overview").setAttribute("aria-pressed",String(!project));document.getElementById("zh").setAttribute("aria-pressed",String(lang==="zh-TW"));document.getElementById("en").setAttribute("aria-pressed",String(lang==="en"));document.getElementById("updated").textContent=text.updated+": "+(data.generated_at||"—");document.getElementById("app").innerHTML=project?detail(project):overview();bind()}
+document.getElementById("overview").addEventListener("click",()=>writeState(""));document.getElementById("zh").addEventListener("click",()=>{lang="zh-TW";writeState(singleProject?projectKey(data.projects[0]):stateProject(),true)});document.getElementById("en").addEventListener("click",()=>{lang="en";writeState(singleProject?projectKey(data.projects[0]):stateProject(),true)});addEventListener("popstate",render);render();
+</script></body></html>""".replace("__PAYLOAD__", payload).replace("__LABELS__", translations).replace("__LANG__", html.escape(language)).replace("__SINGLE__", "true" if single_project else "false")
+
+
 def project_html(snapshot: dict[str, Any], language: str) -> str:
-    body = html.escape(project_markdown(snapshot, language))
-    return f"""<!doctype html><html lang=\"{html.escape(language)}\"><meta charset=\"utf-8\"><title>{html.escape(snapshot['project']['name'])}</title><style>body{{font-family:system-ui;margin:2rem;line-height:1.5;max-width:960px}}pre{{white-space:pre-wrap}}</style><pre>{body}</pre></html>\n"""
+    return _console_html({"generated_at": snapshot["generated_at"], "projects": [snapshot]}, language, True)
 
 
 def refresh_project_report(project_root: Path, history: int = 10, legacy_status: str = "auto", language: str = "zh-TW", force: bool = False) -> tuple[dict[str, Any], bool]:
@@ -422,13 +490,17 @@ def portfolio_markdown(portfolio: dict[str, Any], language: str) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def portfolio_html(portfolio: dict[str, Any]) -> str:
+def _legacy_portfolio_html(portfolio: dict[str, Any]) -> str:
     payload = json.dumps(portfolio, ensure_ascii=False).replace("</", "<\\/")
     translations = json.dumps(LABELS, ensure_ascii=False)
     return f"""<!doctype html><html lang=\"zh-TW\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>OctoPulse Portfolio</title>
 <style>:root{{color-scheme:light dark}}body{{font-family:system-ui;margin:0;color:CanvasText;background:Canvas}}header,main{{max-width:1100px;margin:auto;padding:1rem}}nav{{display:flex;gap:.5rem;flex-wrap:wrap}}button{{font:inherit;padding:.45rem .7rem}}.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem}}.card{{border:1px solid GrayText;border-radius:.5rem;padding:.75rem}}.muted{{color:GrayText}}.signal{{color:darkorange}}pre{{white-space:pre-wrap}}@media(max-width:600px){{header,main{{padding:.75rem}}.cards{{grid-template-columns:1fr}}}}</style>
 <header><nav><button id=\"overview\"></button><button id=\"zh\">繁中</button><button id=\"en\">English</button></nav><nav id=\"projects\"></nav></header><main id=\"content\"></main>
 <script>const data={payload};const labels={translations};let lang=new URLSearchParams(location.search).get('lang')==='en'?'en':'zh-TW';const text=()=>labels[lang];function projectName(p){{return p.project.name}}function setState(name){{const u=new URL(location);u.searchParams.set('lang',lang);u.hash=name?'project='+encodeURIComponent(name):'';history.pushState(null,'',u);render()}}function esc(v){{const n=document.createElement('span');n.textContent=v??'—';return n.innerHTML}}function render(){{const t=text();document.documentElement.lang=lang;overview.textContent=t.overview;projects.innerHTML='';data.projects.forEach(p=>{{const b=document.createElement('button');b.textContent=projectName(p);b.onclick=()=>setState(projectName(p));projects.append(b)}});const name=new URLSearchParams(location.hash.slice(1)).get('project');const p=data.projects.find(x=>projectName(x)===name);if(!p){{const counts={{}};data.projects.forEach(x=>{{const h=x.marker?.status?.health||x.state||x.marker?.state||t.unknown;counts[h]=(counts[h]||0)+1}});content.innerHTML='<h1>'+esc(t.portfolio_report)+'</h1><p class=\"muted\">'+esc(t.updated)+': '+esc(data.generated_at)+'</p><section class=\"cards\">'+Object.entries(counts).map(([k,v])=>'<div class=\"card\"><strong>'+esc(k)+'</strong><br>'+esc(v)+'</div>').join('')+'</section><h2>'+esc(t.projects)+'</h2>'+data.projects.map(x=>{{const s=x.marker?.status;return '<article class=\"card\"><h3>'+esc(projectName(x))+'</h3><p>'+esc(s?.goal||x.state||x.marker?.state)+'</p><p class=\"muted\">'+esc(s?.next_action||'')+'</p></article>'}}).join('');return}}const s=p.marker?.status;content.innerHTML='<h1>'+esc(projectName(p))+'</h1><p class=\"muted\">'+esc(p.project.path)+'</p>'+(!s?'<p>'+esc(p.state||p.marker?.state)+'</p>':'<dl><dt>'+esc(t.phase)+'</dt><dd>'+esc(s.phase)+'</dd><dt>'+esc(t.health)+'</dt><dd>'+esc(s.health)+'</dd><dt>'+esc(t.goal)+'</dt><dd>'+esc(s.goal)+'</dd><dt>'+esc(t.summary)+'</dt><dd>'+esc(s.summary)+'</dd><dt>'+esc(t.next)+'</dt><dd>'+esc(s.next_action)+'</dd><dt>'+esc(t.verification)+'</dt><dd>'+esc(s.verification.status)+'</dd></dl><h2>'+esc(t.signals)+'</h2><p class=\"signal\">'+esc((p.signals||[]).join(', ')||t.none)+'</p><h2>'+esc(t.history)+'</h2><ul>'+p.history.map(h=>'<li><code>'+esc(h.commit)+'</code> '+esc(h.subject)+'</li>').join('')+'</ul><h2>'+esc(t.tools)+'</h2><pre>'+esc(JSON.stringify(p.activity,null,2))+'</pre>')}}overview.onclick=()=>setState('');zh.onclick=()=>{{lang='zh-TW';setState(new URLSearchParams(location.hash.slice(1)).get('project')||'')}};en.onclick=()=>{{lang='en';setState(new URLSearchParams(location.hash.slice(1)).get('project')||'')}};addEventListener('popstate',render);render();</script></html>\n"""
+
+
+def portfolio_html(portfolio: dict[str, Any]) -> str:
+    return _console_html(portfolio, portfolio.get("render_language", "zh-TW"), False)
 
 
 def write_portfolio_report(portfolio: dict[str, Any], output: Path, language: str, report_format: str = "both") -> list[Path]:
