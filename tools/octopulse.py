@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from octopulse import core
+from octopulse import core, hooks, reports
 
 
 GUIDANCE_BLOCK = """<!-- octopulse:start -->
@@ -69,6 +69,7 @@ def command_init(args: argparse.Namespace) -> int:
         marker.unlink()
     marker.touch()
     added = core.add_root(root)
+    reports.ensure_local_exclude(root)
     changed = inject_guidance(root, args.agent) if args.agent else []
     print(json.dumps({"marker": str(marker), "root_added": added, "guidance_updated": [str(path) for path in changed]}, ensure_ascii=False))
     return 0
@@ -101,24 +102,29 @@ def command_root(args: argparse.Namespace) -> int:
 
 
 def command_report(args: argparse.Namespace) -> int:
-    entries, reads, missing_roots = core.scan_projects()
-    result_fingerprint = core.fingerprint(entries)
+    return command_portfolio_report(args)
+
+
+def command_project_report(args: argparse.Namespace) -> int:
+    directory = current_directory(args.project)
+    root = core.git_root(directory)
+    if root is None:
+        print("error: project must be inside a Git work tree", file=sys.stderr)
+        return 1
+    snapshot, cached = reports.refresh_project_report(root, args.history, args.legacy_status, args.lang, force=args.refresh == "all")
+    print(json.dumps({"project": str(root), "output": str(reports.report_dir(root)), "cached": cached, "signals": snapshot["signals"]}, ensure_ascii=False))
+    return 0
+
+
+def command_portfolio_report(args: argparse.Namespace) -> int:
+    portfolio, refreshed = reports.collect_portfolio(args.refresh, args.history, args.legacy_status, args.lang)
     output = Path(args.output).expanduser() if args.output else core.default_report_dir()
-    cache = core.load_cache()
-    expected = [output / "projects.json"]
-    if args.format in {"markdown", "both"}:
-        expected.append(output / "latest.md")
-    if args.format in {"html", "both"}:
-        expected.append(output / "index.html")
-    unchanged = cache.get("fingerprint") == result_fingerprint and all(path.exists() for path in expected)
-    written = [] if unchanged else core.write_report(entries, output, args.format)
-    if not unchanged:
-        core.write_json(core.cache_path(), {"schema_version": core.VERSION, "fingerprint": result_fingerprint})
-    result = {"projects": len(entries), "output": str(output), "cached": unchanged, "written": [str(path) for path in written]}
+    written = reports.write_portfolio_report(portfolio, output, args.lang, getattr(args, "format", "both"))
+    result = {"projects": len(portfolio["projects"]), "output": str(output), "cached": not refreshed and not written, "refreshed_projects": refreshed, "written": [str(path) for path in written]}
     if args.explain:
-        result["marker_reads"] = reads
-        result["missing_roots"] = missing_roots
-        result["reason"] = "fingerprint unchanged" if unchanged else "marker or Git facts changed, or requested output is missing"
+        result["refresh"] = args.refresh
+        result["data_source"] = "project snapshots"
+        result["missing_project_reports"] = [item["project"]["path"] for item in portfolio["projects"] if item.get("state") == "missing_project_report"]
     print(json.dumps(result, ensure_ascii=False))
     return 0
 
@@ -141,7 +147,72 @@ def command_archive(args: argparse.Namespace) -> int:
         return 1
     core.write_json(marker, payload)
     core.add_root(root)
+    reports.ensure_local_exclude(root)
     print(json.dumps({"marker": str(marker), "mode": "archived", "health": "stale"}, ensure_ascii=False))
+    return 0
+
+
+def command_activity(args: argparse.Namespace) -> int:
+    root = core.git_root(current_directory(args.project))
+    if root is None:
+        print("error: project must be inside a Git work tree", file=sys.stderr)
+        return 1
+    entry = reports.record_activity(root, args.tool, args.activity_command, getattr(args, "result", None))
+    print(json.dumps({"project": str(root), "activity": entry}, ensure_ascii=False))
+    return 0
+
+
+def hook_payload() -> dict | None:
+    return hooks.read_payload(sys.stdin)
+
+
+def command_hook_session_start(args: argparse.Namespace) -> int:
+    payload = hook_payload()
+    if not payload or payload.get("hook_event_name") != "SessionStart":
+        return 0
+    cwd = payload.get("cwd")
+    if not isinstance(cwd, str) or reports.eligible_hook_project(Path(cwd)) is None:
+        return 0
+    print(hooks.session_start_output())
+    return 0
+
+
+def command_hook_stop(args: argparse.Namespace) -> int:
+    payload = hook_payload()
+    if not payload or payload.get("hook_event_name") != "Stop":
+        return 0
+    cwd = payload.get("cwd")
+    if not isinstance(cwd, str):
+        return 0
+    root = reports.eligible_hook_project(Path(cwd))
+    if root is None:
+        return 0
+    try:
+        with reports.project_hook_lock(root) as locked:
+            if not locked:
+                return 0
+            _, cached = reports.refresh_project_report(root, language="zh-TW")
+        if cached:
+            return 0
+        with reports.portfolio_hook_lock() as locked:
+            if not locked:
+                return 0
+            portfolio, _ = reports.collect_portfolio(refresh="never", language="zh-TW")
+            reports.write_portfolio_report(portfolio, core.default_report_dir(), "zh-TW")
+    except (OSError, ValueError):
+        return 0
+    return 0
+
+
+def command_hook_install_codex(args: argparse.Namespace) -> int:
+    result = hooks.install_codex_hooks(Path(args.hooks_file).expanduser(), args.command)
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
+def command_hook_remove_codex(args: argparse.Namespace) -> int:
+    result = hooks.remove_codex_hooks(Path(args.hooks_file).expanduser())
+    print(json.dumps(result, ensure_ascii=False))
     return 0
 
 
@@ -169,11 +240,58 @@ def build_parser() -> argparse.ArgumentParser:
         item = root_subparsers.add_parser(name)
         item.add_argument("path")
         item.set_defaults(handler=command_root)
-    report = subparsers.add_parser("report", help="Render marker-only reports")
+    report = subparsers.add_parser("report", help="Compatibility alias for `portfolio report`")
     report.add_argument("--format", choices=["markdown", "html", "both"], default="both")
     report.add_argument("--output")
     report.add_argument("--explain", action="store_true")
+    report.add_argument("--refresh", choices=["auto", "never", "all"], default="auto")
+    report.add_argument("--history", type=int, default=10)
+    report.add_argument("--legacy-status", choices=["auto", "never"], default="auto")
+    report.add_argument("--lang", choices=["zh-TW", "en"], default="zh-TW")
     report.set_defaults(handler=command_report)
+    project = subparsers.add_parser("project", help="Create one project report")
+    project_subparsers = project.add_subparsers(dest="project_command", required=True)
+    project_report = project_subparsers.add_parser("report")
+    project_report.add_argument("--project")
+    project_report.add_argument("--history", type=int, default=10)
+    project_report.add_argument("--legacy-status", choices=["auto", "never"], default="auto")
+    project_report.add_argument("--lang", choices=["zh-TW", "en"], default="zh-TW")
+    project_report.add_argument("--refresh", choices=["auto", "all"], default="auto")
+    project_report.set_defaults(handler=command_project_report)
+    portfolio = subparsers.add_parser("portfolio", help="Create a report for all registered projects")
+    portfolio_subparsers = portfolio.add_subparsers(dest="portfolio_command", required=True)
+    portfolio_report = portfolio_subparsers.add_parser("report")
+    portfolio_report.add_argument("--output")
+    portfolio_report.add_argument("--explain", action="store_true")
+    portfolio_report.add_argument("--refresh", choices=["auto", "never", "all"], default="auto")
+    portfolio_report.add_argument("--history", type=int, default=10)
+    portfolio_report.add_argument("--legacy-status", choices=["auto", "never"], default="auto")
+    portfolio_report.add_argument("--lang", choices=["zh-TW", "en"], default="zh-TW")
+    portfolio_report.set_defaults(handler=command_portfolio_report)
+    activity = subparsers.add_parser("activity", help="Record a non-trivial AI tool session")
+    activity_subparsers = activity.add_subparsers(dest="activity_command", required=True)
+    activity_start = activity_subparsers.add_parser("start")
+    activity_start.add_argument("--project")
+    activity_start.add_argument("--tool", choices=sorted(reports.TOOLS), required=True)
+    activity_start.set_defaults(handler=command_activity)
+    activity_finish = activity_subparsers.add_parser("finish")
+    activity_finish.add_argument("--project")
+    activity_finish.add_argument("--tool", choices=sorted(reports.TOOLS), required=True)
+    activity_finish.add_argument("--result", choices=sorted(reports.RESULTS), default="updated")
+    activity_finish.set_defaults(handler=command_activity)
+    hook = subparsers.add_parser("hook", help="Run or manage narrowly scoped Codex hooks")
+    hook_subparsers = hook.add_subparsers(dest="hook_command", required=True)
+    hook_session_start = hook_subparsers.add_parser("codex-session-start")
+    hook_session_start.set_defaults(handler=command_hook_session_start)
+    hook_stop = hook_subparsers.add_parser("codex-stop")
+    hook_stop.set_defaults(handler=command_hook_stop)
+    hook_install = hook_subparsers.add_parser("codex-install")
+    hook_install.add_argument("--hooks-file", required=True)
+    hook_install.add_argument("--command", required=True)
+    hook_install.set_defaults(handler=command_hook_install_codex)
+    hook_remove = hook_subparsers.add_parser("codex-remove")
+    hook_remove.add_argument("--hooks-file", required=True)
+    hook_remove.set_defaults(handler=command_hook_remove_codex)
     archive = subparsers.add_parser("archive", help="Create a source-free stale pulse for a retired project")
     archive.add_argument("--directory")
     archive.add_argument("--yes", action="store_true")

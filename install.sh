@@ -6,9 +6,11 @@ REPOSITORY="davislinyd/OctoPulse"
 VERSION="latest"
 AGENT="auto"
 FORCE=0
+WITHOUT_CODEX_HOOKS=0
+REMOVE_CODEX_HOOKS=0
 
 usage() {
-  echo "Usage: install.sh [--version VERSION] [--agent auto|all|codex|claude|antigravity] [--force]" >&2
+  echo "Usage: install.sh [--version VERSION] [--agent auto|all|codex|claude|antigravity] [--force] [--without-codex-hooks|--remove-codex-hooks]" >&2
 }
 
 while [ "$#" -gt 0 ]; do
@@ -16,10 +18,14 @@ while [ "$#" -gt 0 ]; do
     --version) VERSION="$2"; shift 2 ;;
     --agent) AGENT="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
+    --without-codex-hooks) WITHOUT_CODEX_HOOKS=1; shift ;;
+    --remove-codex-hooks) REMOVE_CODEX_HOOKS=1; shift ;;
     --help) usage; exit 0 ;;
     *) usage; exit 2 ;;
   esac
 done
+
+[ "$WITHOUT_CODEX_HOOKS" -eq 0 ] || [ "$REMOVE_CODEX_HOOKS" -eq 0 ] || { usage; exit 2; }
 
 case "$AGENT" in auto|all|codex|claude|antigravity) ;; *) usage; exit 2 ;; esac
 command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; exit 1; }
@@ -87,8 +93,12 @@ install_skill() {
   target="$1"
   parent="$(dirname "$target")"
   if [ -e "$target" ] && [ "$FORCE" -ne 1 ]; then
-    echo "$target already exists; not replacing it" >&2
-    return
+    if [ -f "$target/SKILL.md" ] && grep -q '^name: OctoPulse' "$target/SKILL.md"; then
+      :
+    else
+      echo "$target already exists; not replacing it" >&2
+      return
+    fi
   fi
   mkdir -p "$parent"
   rm -rf "$target"
@@ -109,6 +119,18 @@ fi
 
 if [ "$AGENT" = "all" ] || [ "$AGENT" = "codex" ] || [ "$AGENT" = "antigravity" ]; then install_skill "$HOME/.agents/skills/octopulse"; fi
 if [ "$AGENT" = "all" ] || [ "$AGENT" = "claude" ]; then install_skill "$HOME/.claude/skills/octopulse"; fi
+
+CODEX_HOOKS_FILE="$HOME/.codex/hooks.json"
+if [ "$AGENT" = "all" ] || [ "$AGENT" = "codex" ]; then
+  if [ -f "$HOME/.codex/config.toml" ] && grep -qE 'octopulse_codex_hook\.py|octopulse-status' "$HOME/.codex/config.toml"; then
+    echo "legacy OctoPulse hook found in ~/.codex/config.toml; disable it with Codex /hooks to avoid duplicate hooks" >&2
+  fi
+  if [ "$REMOVE_CODEX_HOOKS" -eq 1 ]; then
+    "$CLI_COMMAND" hook codex-remove --hooks-file "$CODEX_HOOKS_FILE"
+  elif [ "$WITHOUT_CODEX_HOOKS" -eq 0 ]; then
+    "$CLI_COMMAND" hook codex-install --hooks-file "$CODEX_HOOKS_FILE" --command "$CLI_COMMAND"
+  fi
+fi
 
 "$CLI_COMMAND" --version
 case ":$PATH:" in
