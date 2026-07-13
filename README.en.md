@@ -2,7 +2,7 @@
 
 [繁體中文](README.md) · [English](README.en.md)
 
-OctoPulse v2.1.0 is a lightweight project-progress system for AI-assisted development. Each tracked Git project keeps one small `.otcopulse` file, so an agent can recover reliable status without rereading source code, conversation history, or every project report.
+OctoPulse v2.1.1 is a lightweight project-progress system for AI-assisted development. Each tracked Git project keeps one small `.otcopulse` file, so an agent can recover reliable status without rereading source code, conversation history, or every project report.
 
 ![OctoPulse data flow](docs/octopulse-flow.svg)
 

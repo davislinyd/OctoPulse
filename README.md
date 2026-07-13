@@ -2,7 +2,7 @@
 
 [繁體中文](README.md) · [English](README.en.md)
 
-OctoPulse v2.1.0 是為 AI 輔助開發設計的輕量專案進度系統。每個要追蹤的 Git 專案只保留一個很小的 `.otcopulse`，讓 Agent 取得可靠進度時不必重新閱讀原始碼、歷史紀錄或所有專案報表。
+OctoPulse v2.1.1 是為 AI 輔助開發設計的輕量專案進度系統。每個要追蹤的 Git 專案只保留一個很小的 `.otcopulse`，讓 Agent 取得可靠進度時不必重新閱讀原始碼、歷史紀錄或所有專案報表。
 
 ![OctoPulse 資料流程](docs/octopulse-flow.svg)
 
