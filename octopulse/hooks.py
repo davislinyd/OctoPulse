@@ -1,4 +1,4 @@
-"""Codex and Grok hook helpers with strict v2-only inputs and outputs."""
+"""Codex and Grok hook helpers with strict v3-only inputs and outputs."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def read_payload(stream: Any) -> dict[str, Any] | None:
 
 
 def codex_context_message() -> str:
-    return "OctoPulse: use the global skill; read only .otcopulse and lightweight Git facts."
+    return "OctoPulse: use the global skill; read only .octopulse and lightweight Git facts."
 
 
 def session_start_output() -> str:

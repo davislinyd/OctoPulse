@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/davislinyd/OctoPulse/schemas/otcopulse.schema.json",
-  "title": "OctoPulse v2 Project Pulse",
+  "$id": "https://github.com/davislinyd/OctoPulse/schemas/octopulse.schema.json",
+  "title": "OctoPulse v3 Project Pulse",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "name", "last_updated", "phase", "health", "goal", "summary", "next_action", "verification", "attention"],

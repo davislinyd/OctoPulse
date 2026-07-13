@@ -1,4 +1,4 @@
-# `.otcopulse` v2 schema
+# `.octopulse` v2 schema
 
 The marker is either empty (uninitialized) or a UTF-8 JSON object no larger than 4 KiB.
 

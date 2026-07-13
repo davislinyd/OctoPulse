@@ -1,4 +1,4 @@
-"""OctoPulse v2: local, marker-based project status pulses."""
+"""OctoPulse v3: local, marker-based project status pulses."""
 
 from .core import MARKER_NAME, RELEASE_VERSION, VERSION
 

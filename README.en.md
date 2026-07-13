@@ -2,13 +2,13 @@
 
 [繁體中文](README.md) · [English](README.en.md)
 
-OctoPulse v2.2.0 is a lightweight project-progress system for AI-assisted development. Each tracked Git project keeps one small `.otcopulse` file, so an agent can recover reliable status without rereading source code, conversation history, or every project report.
+OctoPulse v3.0.0 is a lightweight project-progress system for AI-assisted development. Each tracked Git project keeps one small `.octopulse` file, so an agent can recover reliable status without rereading source code, conversation history, or every project report.
 
 ![OctoPulse data flow](docs/octopulse-flow.svg)
 
 ## Design principles
 
-- **Small, explicit pulse files.** `.otcopulse` is the sole status source. An empty file is uninitialized; a non-empty file must satisfy the strict JSON schema and remain under 4 KiB.
+- **Small, explicit pulse files.** `.octopulse` is the sole status source. An empty file is uninitialized; a non-empty file must satisfy the strict JSON schema and remain under 4 KiB.
 - **Context budget first.** A normal agent session reads only the Git root, lightweight Git facts, and the current project's marker. Reports are never injected into prompts automatically.
 - **Scripted aggregation.** `octopulse portfolio report` only locates markers under registered roots, while the portfolio reads project snapshots. `auto` refreshes a project only when its marker, lightweight Git facts, legacy context, or activity fingerprint changed.
 - **Explicit, reversible writes.** Initialization, archiving, and agent-guidance injection require explicit commands. OctoPulse never changes or deletes `PROJECT_STATUS.md` or `.ai/status.json`. Project reports may optionally read a small, allow-listed `.ai/status.json` as legacy context.
@@ -59,6 +59,16 @@ octopulse activity finish --tool grok --result updated
 
 ## Usage
 
+### Upgrade from v2
+
+v3 recognizes only `.octopulse`. After updating the CLI, run this once from the Git root of every project that still has a v2 `.otcopulse` marker:
+
+```sh
+octopulse migrate-marker --yes
+```
+
+The command atomically renames the marker in place without reading or rewriting its contents, source code, Git history, or legacy status. It refuses a two-marker conflict and safely reports when the new marker already exists or neither marker exists. The installer never migrates projects automatically.
+
 ### Track an active project
 
 Run this from the project's Git root:
@@ -67,10 +77,10 @@ Run this from the project's Git root:
 octopulse init --yes
 ```
 
-`init` creates an empty `.otcopulse` and registers the Git root as trusted. A human who has already decided to initialize does not need `context` first; it is the AI skill's read-only diagnostic step. At the end of non-trivial work, the agent updates the marker only when the goal, summary, next action, verification, or attention items materially changed, then validates it:
+`init` creates an empty `.octopulse` and registers the Git root as trusted. A human who has already decided to initialize does not need `context` first; it is the AI skill's read-only diagnostic step. At the end of non-trivial work, the agent updates the marker only when the goal, summary, next action, verification, or attention items materially changed, then validates it:
 
 ```sh
-octopulse validate .otcopulse
+octopulse validate .octopulse
 ```
 
 To add a durable project reminder, explicitly select an adapter. Only this action updates `AGENTS.md` or `CLAUDE.md` with a minimal managed block:
@@ -87,12 +97,12 @@ After installing the global skill, tell an agent in a tracked project: “Use th
 octopulse context
 ```
 
-For a `valid` result, the skill reads only `.otcopulse` and lightweight Git facts. It records tool-only events at the start and end of the work:
+For a `valid` result, the skill reads only `.octopulse` and lightweight Git facts. It records tool-only events at the start and end of the work:
 
 ```sh
 octopulse activity start --tool codex
-# The agent completes the work and updates .otcopulse only if semantic status changed.
-octopulse validate .otcopulse
+# The agent completes the work and updates .octopulse only if semantic status changed.
+octopulse validate .octopulse
 octopulse activity finish --tool codex --result updated
 octopulse project report
 ```
@@ -101,12 +111,12 @@ octopulse project report
 
 ### Scenario: direct human or automation commands
 
-The same workflow works in a shell or CI script without AI. After initialization, maintain `.otcopulse` with an editor; write and validate it only when status materially changes:
+The same workflow works in a shell or CI script without AI. After initialization, maintain `.octopulse` with an editor; write and validate it only when status materially changes:
 
 ```sh
 octopulse init --yes
-# Update .otcopulse with an editor: goal, summary, next_action, verification, or attention.
-octopulse validate .otcopulse
+# Update .octopulse with an editor: goal, summary, next_action, verification, or attention.
+octopulse validate .octopulse
 octopulse project report --lang en
 ```
 
@@ -145,9 +155,9 @@ octopulse activity finish --tool codex --result updated
 octopulse project report
 ```
 
-Artifacts live in `.octopulse-reports/`: `snapshot.json`, `latest.md`, `index.html`, and a minimal `activity.jsonl`. The project report reads only the marker, Git metadata, the latest 10 commit subjects, activity events, and an optional small `.ai/status.json`; it never reads source code or diffs. `.otcopulse` remains the sole semantic status source; legacy status is read-only context.
+Artifacts live in `.octopulse-reports/`: `snapshot.json`, `latest.md`, `index.html`, and a minimal `activity.jsonl`. The project report reads only the marker, Git metadata, the latest 10 commit subjects, activity events, and an optional small `.ai/status.json`; it never reads source code or diffs. `.octopulse` remains the sole semantic status source; legacy status is read-only context.
 
-When the installer detects Codex, it automatically migrates known v1 `UserPromptSubmit` hooks to two global v2 hooks: `SessionStart` injects one short skill reminder at `startup|resume`; `Stop` refreshes changed reports only for valid, registered, non-archived projects. They do not read prompts, source code, diffs, or conversations, and never write `.otcopulse` or activity. Disable or remove them during reinstall with:
+When the installer detects Codex, it automatically migrates known v1 `UserPromptSubmit` hooks to two global v3 hooks: `SessionStart` injects one short skill reminder at `startup|resume`; `Stop` refreshes changed reports only for valid, registered, non-archived projects. They do not read prompts, source code, diffs, or conversations, and never write `.octopulse` or activity. Disable or remove them during reinstall with:
 
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --without-codex-hooks
@@ -171,9 +181,9 @@ octopulse portfolio report --refresh auto --explain
 
 This command works from any directory. It refreshes only project snapshots whose fingerprints changed, then renders `$OCTOPULSE_HOME/reports/projects.json`, `latest.md`, and `index.html`. The HTML switches between overview and project detail views, with Chinese/English UI through a URL language parameter; human-written goals and summaries remain in their original language.
 
-## `.otcopulse` format
+## `.octopulse` format
 
-A marker is either empty or UTF-8 JSON under 4 KiB. See the complete [schema](schemas/otcopulse.schema.json).
+A marker is either empty or UTF-8 JSON under 4 KiB. See the complete [schema](schemas/octopulse.schema.json).
 
 ```json
 {
@@ -200,13 +210,14 @@ A marker is either empty or UTF-8 JSON under 4 KiB. See the complete [schema](sc
 | --- | --- |
 | `octopulse context` | Read-only inspection of the current Git project and marker. |
 | `octopulse init --yes` | Create an empty marker and register its root. |
+| `octopulse migrate-marker --yes` | Atomically rename a v2 `.otcopulse` marker to `.octopulse` in the same Git root. |
 | `octopulse archive --yes --reason TEXT` | Archive a project as `paused` / `stale`. |
 | `octopulse activity start\|finish --tool TOOL` | Record non-trivial AI tool activity without prompts. |
 | `octopulse hook codex-session-start\|codex-stop` | Used by Codex lifecycle hooks; never use it to infer project status manually. |
 | `octopulse hook grok-stop` | Used by the Grok Build Stop hook; never use it to infer project status manually. |
 | `octopulse project report` | Generate the current repo's snapshot, Markdown, and HTML. |
 | `octopulse portfolio report --refresh auto` | Generate a portfolio report from any directory. |
-| `octopulse validate .otcopulse` | Validate marker schema and size. |
+| `octopulse validate .octopulse` | Validate marker schema and size. |
 | `octopulse root add\|list\|remove PATH` | Manage trusted scan roots. |
 | `octopulse report` | Compatibility alias for `portfolio report`. |
 

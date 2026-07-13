@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OctoPulse v2 command-line interface."""
+"""OctoPulse v3 command-line interface."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from octopulse import core, hooks, reports
 GUIDANCE_BLOCK = """<!-- octopulse:start -->
 ## OctoPulse
 
-Use the global `OctoPulse` skill at the start and end of non-trivial work. It may read only `.otcopulse` plus lightweight Git facts; ask before creating or repairing the marker.
+Use the global `OctoPulse` skill at the start and end of non-trivial work. It may read only `.octopulse` plus lightweight Git facts; ask before creating or repairing the marker.
 <!-- octopulse:end -->
 """
 
@@ -77,6 +77,32 @@ def command_init(args: argparse.Namespace) -> int:
 
 def command_context(args: argparse.Namespace) -> int:
     print(json.dumps(core.context_for(current_directory(args.directory)), ensure_ascii=False))
+    return 0
+
+
+def command_migrate_marker(args: argparse.Namespace) -> int:
+    if not require_yes(args):
+        return 2
+    root = core.git_root(current_directory(args.directory))
+    if root is None:
+        print("error: current directory is not inside a Git work tree", file=sys.stderr)
+        return 1
+    source = root / core.LEGACY_MARKER_NAME
+    target = root / core.MARKER_NAME
+    if source.exists() and target.exists():
+        print(f"error: both {source} and {target} exist; resolve the conflict before migrating", file=sys.stderr)
+        return 1
+    if target.exists():
+        print(json.dumps({"project_root": str(root), "marker": str(target), "state": "already_migrated"}, ensure_ascii=False))
+        return 0
+    if not source.exists():
+        print(json.dumps({"project_root": str(root), "marker": str(target), "state": "missing"}, ensure_ascii=False))
+        return 0
+    if source.is_symlink() or not source.is_file():
+        print(f"error: {source} must be a regular file", file=sys.stderr)
+        return 1
+    source.replace(target)
+    print(json.dumps({"project_root": str(root), "source": str(source), "marker": str(target), "state": "migrated"}, ensure_ascii=False))
     return 0
 
 
@@ -243,7 +269,7 @@ def command_hook_remove_grok(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="OctoPulse v2 marker-based status CLI")
+    parser = argparse.ArgumentParser(description="OctoPulse v3 marker-based status CLI")
     parser.add_argument("--version", action="version", version=f"%(prog)s {core.RELEASE_VERSION}")
     subparsers = parser.add_subparsers(dest="command", required=True)
     init = subparsers.add_parser("init", help="Create an empty marker after confirmation")
@@ -255,7 +281,11 @@ def build_parser() -> argparse.ArgumentParser:
     context = subparsers.add_parser("context", help="Inspect the current project without writing")
     context.add_argument("--directory")
     context.set_defaults(handler=command_context)
-    validate = subparsers.add_parser("validate", help="Validate one .otcopulse marker")
+    migrate_marker = subparsers.add_parser("migrate-marker", help="Rename one legacy .otcopulse marker after confirmation")
+    migrate_marker.add_argument("--directory")
+    migrate_marker.add_argument("--yes", action="store_true")
+    migrate_marker.set_defaults(handler=command_migrate_marker)
+    validate = subparsers.add_parser("validate", help="Validate one .octopulse marker")
     validate.add_argument("marker", type=Path)
     validate.set_defaults(handler=command_validate)
     root = subparsers.add_parser("root", help="Manage trusted discovery roots")

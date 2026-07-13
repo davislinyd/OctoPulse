@@ -70,7 +70,7 @@ class OctoPulseV2Tests(unittest.TestCase):
         return output.getvalue()
 
     def test_marker_states_and_schema_are_strict(self):
-        marker = self.root / ".otcopulse"
+        marker = self.root / ".octopulse"
         marker.touch()
         self.assertEqual(core.inspect_marker(marker)["state"], "uninitialized")
 
@@ -87,27 +87,58 @@ class OctoPulseV2Tests(unittest.TestCase):
         marker.write_bytes(b"x" * (core.MAX_MARKER_BYTES + 1))
         self.assertEqual(core.inspect_marker(marker)["state"], "invalid")
 
+    def test_legacy_marker_is_ignored_until_explicit_migration(self):
+        project = self.make_git_project()
+        legacy = project / core.LEGACY_MARKER_NAME
+        legacy.write_bytes(b'{"invalid":true}\n')
+        core.add_root(project)
+        self.assertEqual(core.context_for(project)["state"], "missing")
+        self.assertEqual(core.scan_projects()[0], [])
+
+        previous = Path.cwd()
+        try:
+            os.chdir(project)
+            self.assertEqual(cli.main(["migrate-marker"]), 2)
+            for content in (b"", json.dumps(valid_marker()).encode("utf-8"), b"not valid JSON"):
+                legacy.write_bytes(content)
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(cli.main(["migrate-marker", "--yes"]), 0)
+                current = project / core.MARKER_NAME
+                self.assertEqual(current.read_bytes(), content)
+                self.assertFalse(legacy.exists())
+                with redirect_stdout(io.StringIO()):
+                    self.assertEqual(cli.main(["migrate-marker", "--yes"]), 0)
+                current.unlink()
+
+            legacy.write_bytes(b"legacy")
+            (project / core.MARKER_NAME).write_bytes(b"current")
+            self.assertEqual(cli.main(["migrate-marker", "--yes"]), 1)
+            self.assertEqual(legacy.read_bytes(), b"legacy")
+            self.assertEqual((project / core.MARKER_NAME).read_bytes(), b"current")
+        finally:
+            os.chdir(previous)
+
     def test_discovery_skips_dependency_directories_and_non_root_marker_is_invalid(self):
         project = self.make_git_project()
-        core.write_json(project / ".otcopulse", valid_marker("Root"))
+        core.write_json(project / ".octopulse", valid_marker("Root"))
         nested = project / "node_modules" / "ignored"
         nested.mkdir(parents=True)
-        core.write_json(nested / ".otcopulse", valid_marker("Ignored"))
+        core.write_json(nested / ".octopulse", valid_marker("Ignored"))
         misplaced = project / "src"
         misplaced.mkdir()
-        core.write_json(misplaced / ".otcopulse", valid_marker("Misplaced"))
+        core.write_json(misplaced / ".octopulse", valid_marker("Misplaced"))
         core.add_root(self.root)
 
         entries, reads, _ = core.scan_projects()
         self.assertEqual(len(entries), 2)
-        self.assertNotIn(str(nested / ".otcopulse"), reads)
+        self.assertNotIn(str(nested / ".octopulse"), reads)
         by_marker = {Path(entry["marker"]).resolve(): entry for entry in entries}
-        self.assertEqual(by_marker[(project / ".otcopulse").resolve()]["state"], "valid")
-        self.assertEqual(by_marker[(misplaced / ".otcopulse").resolve()]["state"], "invalid")
+        self.assertEqual(by_marker[(project / ".octopulse").resolve()]["state"], "valid")
+        self.assertEqual(by_marker[(misplaced / ".octopulse").resolve()]["state"], "invalid")
 
     def test_report_alias_refreshes_project_snapshots_incrementally(self):
         project = self.make_git_project()
-        core.write_json(project / ".otcopulse", valid_marker())
+        core.write_json(project / ".octopulse", valid_marker())
         core.add_root(project)
         output = self.root / "reports"
 
@@ -130,7 +161,7 @@ class OctoPulseV2Tests(unittest.TestCase):
 
     def test_project_snapshot_collects_git_legacy_activity_and_report_details(self):
         project = self.make_git_project()
-        core.write_json(project / ".otcopulse", valid_marker("Detailed"))
+        core.write_json(project / ".octopulse", valid_marker("Detailed"))
         self.commit(project, "one.txt", "Add transport guard")
         self.commit(project, "two.txt", "Verify secure path")
         legacy_path = project / ".ai" / "status.json"
@@ -158,7 +189,7 @@ class OctoPulseV2Tests(unittest.TestCase):
 
     def test_project_and_portfolio_commands_handle_snapshots_and_stale_reports(self):
         project = self.make_git_project()
-        core.write_json(project / ".otcopulse", valid_marker("CLI Project"))
+        core.write_json(project / ".octopulse", valid_marker("CLI Project"))
         core.add_root(project)
         project_output = io.StringIO()
         with redirect_stdout(project_output):
@@ -175,7 +206,7 @@ class OctoPulseV2Tests(unittest.TestCase):
 
     def test_portfolio_html_has_navigation_and_localized_interface(self):
         project = self.make_git_project()
-        core.write_json(project / ".otcopulse", valid_marker("Portfolio Project"))
+        core.write_json(project / ".octopulse", valid_marker("Portfolio Project"))
         core.add_root(project)
         portfolio, refreshed = reports.collect_portfolio(refresh="auto", language="zh-TW")
         self.assertEqual(refreshed, [str(project.resolve())])
@@ -195,7 +226,7 @@ class OctoPulseV2Tests(unittest.TestCase):
 
     def test_codex_session_start_hook_is_gated_and_never_echoes_prompt(self):
         project = self.make_git_project()
-        core.write_json(project / ".otcopulse", valid_marker("Hook Project"))
+        core.write_json(project / ".octopulse", valid_marker("Hook Project"))
         core.add_root(project)
         output = self.run_hook(
             ["hook", "codex-session-start"],
@@ -208,21 +239,21 @@ class OctoPulseV2Tests(unittest.TestCase):
 
         marker = valid_marker("Paused")
         marker["phase"] = "paused"
-        core.write_json(project / ".otcopulse", marker)
+        core.write_json(project / ".octopulse", marker)
         self.assertEqual(self.run_hook(["hook", "codex-session-start"], {"hook_event_name": "SessionStart", "cwd": str(project)}), "")
         self.assertEqual(self.run_hook(["hook", "codex-session-start"], {"hook_event_name": "SessionStart", "cwd": str(self.root)}), "")
 
         unregistered = self.make_git_project("Unregistered")
-        core.write_json(unregistered / ".otcopulse", valid_marker("Unregistered"))
+        core.write_json(unregistered / ".octopulse", valid_marker("Unregistered"))
         self.assertEqual(self.run_hook(["hook", "codex-session-start"], {"hook_event_name": "SessionStart", "cwd": str(unregistered)}), "")
-        (unregistered / ".otcopulse").write_bytes(b"not JSON")
+        (unregistered / ".octopulse").write_bytes(b"not JSON")
         self.assertEqual(self.run_hook(["hook", "codex-session-start"], {"hook_event_name": "SessionStart", "cwd": str(unregistered)}), "")
-        (unregistered / ".otcopulse").write_text("", encoding="utf-8")
+        (unregistered / ".octopulse").write_text("", encoding="utf-8")
         self.assertEqual(self.run_hook(["hook", "codex-session-start"], {"hook_event_name": "SessionStart", "cwd": str(unregistered)}), "")
 
     def test_codex_stop_hook_refreshes_only_changed_managed_projects(self):
         project = self.make_git_project()
-        core.write_json(project / ".otcopulse", valid_marker("Stop Project"))
+        core.write_json(project / ".octopulse", valid_marker("Stop Project"))
         core.add_root(project)
         payload = {"hook_event_name": "Stop", "cwd": str(project)}
         self.assertEqual(self.run_hook(["hook", "codex-stop"], payload), "")
@@ -245,13 +276,13 @@ class OctoPulseV2Tests(unittest.TestCase):
         marker = valid_marker("Archived")
         marker["phase"] = "paused"
         marker["health"] = "stale"
-        core.write_json(project / ".otcopulse", marker)
+        core.write_json(project / ".octopulse", marker)
         self.assertEqual(self.run_hook(["hook", "codex-stop"], payload), "")
         self.assertEqual(snapshot.stat().st_mtime_ns, snapshot_mtime)
 
     def test_grok_stop_hook_is_gated_and_never_echoes_prompt(self):
         project = self.make_git_project()
-        core.write_json(project / ".otcopulse", valid_marker("Grok Project"))
+        core.write_json(project / ".octopulse", valid_marker("Grok Project"))
         core.add_root(project)
         payload = {"hookEventName": "Stop", "cwd": str(project), "prompt": "secret prompt must not leak"}
         self.assertEqual(self.run_hook(["hook", "grok-stop"], payload), "")
@@ -268,7 +299,7 @@ class OctoPulseV2Tests(unittest.TestCase):
         marker = valid_marker("Archived")
         marker["phase"] = "paused"
         marker["health"] = "stale"
-        core.write_json(project / ".otcopulse", marker)
+        core.write_json(project / ".octopulse", marker)
         self.assertEqual(self.run_hook(["hook", "grok-stop"], payload), "")
         self.assertEqual(snapshot.stat().st_mtime_ns, snapshot_mtime)
         self.assertEqual(self.run_hook(["hook", "grok-stop"], {"hookEventName": "Stop", "cwd": str(self.root)}), "")
@@ -404,7 +435,7 @@ class OctoPulseV2Tests(unittest.TestCase):
         try:
             os.chdir(project)
             self.assertEqual(cli.main(["archive", "--yes", "--reason", "Superseded by a new platform."]), 0)
-            marker = core.inspect_marker(project / ".otcopulse")
+            marker = core.inspect_marker(project / ".octopulse")
             self.assertEqual(marker["state"], "valid")
             self.assertEqual(marker["payload"]["phase"], "paused")
             self.assertEqual(marker["payload"]["health"], "stale")
@@ -424,7 +455,7 @@ class OctoPulseV2Tests(unittest.TestCase):
         self.assertIn("octopulse/hooks.py", names)
         self.assertIn("tools/octopulse.py", names)
         self.assertIn("skills/octopulse/SKILL.md", names)
-        self.assertIn("schemas/otcopulse.schema.json", names)
+        self.assertIn("schemas/octopulse.schema.json", names)
         self.assertFalse(any(name.startswith("tools/scan_projects.py") for name in names))
         self.assertFalse(any(name.startswith("tools/validate_status.py") for name in names))
         self.assertFalse(any("__pycache__" in name or name.endswith(".pyc") for name in names))

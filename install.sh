@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install a released OctoPulse v2 runtime and native global skill adapters.
+# Install a released OctoPulse v3 runtime and native global skill adapters.
 set -eu
 
 REPOSITORY="davislinyd/OctoPulse"

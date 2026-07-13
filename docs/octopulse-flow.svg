@@ -31,7 +31,7 @@
   <path class="flow" d="M270 145 H330"/>
   <rect class="active" x="330" y="86" width="250" height="118" rx="14"/>
   <text class="label" x="358" y="128">octopulse context</text>
-  <text class="detail" x="358" y="156">Read .otcopulse only</text>
+  <text class="detail" x="358" y="156">Read .octopulse only</text>
   <text class="small" x="358" y="181">只讀取 marker 與 Git 事實</text>
 
   <path class="accent-flow" d="M580 145 H660"/>
@@ -43,7 +43,7 @@
   <path class="accent-flow" d="M820 204 V270"/>
   <text class="small" x="836" y="244">yes / 是</text>
   <rect class="active" x="660" y="270" width="320" height="126" rx="14"/>
-  <text class="label" x="688" y="312">.otcopulse</text>
+  <text class="label" x="688" y="312">.octopulse</text>
   <text class="detail" x="688" y="340">≤ 4 KiB structured pulse</text>
   <text class="small" x="688" y="367">Validate after an update</text>
 

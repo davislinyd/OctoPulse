@@ -1,4 +1,4 @@
-"""Dependency-free core for the OctoPulse v2 CLI."""
+"""Dependency-free core for the OctoPulse v3 CLI."""
 
 from __future__ import annotations
 
@@ -13,8 +13,9 @@ from typing import Any, Iterable
 
 
 VERSION = 2
-RELEASE_VERSION = "2.2.0"
-MARKER_NAME = ".otcopulse"
+RELEASE_VERSION = "3.0.0"
+MARKER_NAME = ".octopulse"
+LEGACY_MARKER_NAME = ".otcopulse"
 MAX_MARKER_BYTES = 4096
 PHASES = {"planning", "implementation", "verification", "maintenance", "paused"}
 HEALTH_VALUES = {"active", "stable", "needs_attention", "blocked", "stale"}
