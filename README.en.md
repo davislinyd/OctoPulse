@@ -2,7 +2,7 @@
 
 [繁體中文](README.md) · [English](README.en.md)
 
-OctoPulse v2.1.1 is a lightweight project-progress system for AI-assisted development. Each tracked Git project keeps one small `.otcopulse` file, so an agent can recover reliable status without rereading source code, conversation history, or every project report.
+OctoPulse v2.2.0 is a lightweight project-progress system for AI-assisted development. Each tracked Git project keeps one small `.otcopulse` file, so an agent can recover reliable status without rereading source code, conversation history, or every project report.
 
 ![OctoPulse data flow](docs/octopulse-flow.svg)
 
@@ -15,7 +15,7 @@ OctoPulse v2.1.1 is a lightweight project-progress system for AI-assisted develo
 
 ## Install
 
-Install the latest GitHub Release. Codex and Antigravity share `~/.agents/skills`; in `auto` mode, the installer adds one detected global skill, preventing duplicate skills in a shared loader. Choose one:
+Install the latest GitHub Release. Codex, Antigravity, and Grok Build share `~/.agents/skills`; in `auto` mode, the installer detects installed platforms but installs one shared global skill, preventing duplicate skills in a shared loader. Choose one:
 
 First install, or keep an existing skill:
 
@@ -29,7 +29,7 @@ Update an existing skill (replaces the `octopulse` skill):
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --force
 ```
 
-Add `--agent all` to either command only when Claude Code is also required; Codex and Antigravity still share one `~/.agents/skills/octopulse` copy:
+Add `--agent all` to either command only when every platform is required; Codex, Antigravity, and Grok Build still share one `~/.agents/skills/octopulse` copy:
 
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent all
@@ -39,6 +39,22 @@ The installer verifies the release archive SHA-256 and attempts to create `~/.lo
 
 ```sh
 octopulse --version
+```
+
+Install Grok Build explicitly to add the shared skill and its native Stop hook; no second `~/.grok/skills` copy is created:
+
+```sh
+curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent grok
+grok inspect
+```
+
+`grok inspect` should show `~/.agents/skills/octopulse` and `~/.grok/hooks/octopulse.json`. grok.com web Skills cannot directly run the local `octopulse` CLI and are outside this integration's scope.
+
+For non-trivial Grok Build work, the skill explicitly records minimal activity events:
+
+```sh
+octopulse activity start --tool grok
+octopulse activity finish --tool grok --result updated
 ```
 
 ## Usage
@@ -65,7 +81,7 @@ octopulse init --yes --agent codex
 
 ### Scenario: an AI agent reads the skill
 
-After installing the global skill, tell an agent in a tracked project: “Use the OctoPulse skill to get the current project status, then update the pulse and project report after this non-trivial task.” Codex, Claude Code, or Antigravity first runs:
+After installing the global skill, tell an agent in a tracked project: “Use the OctoPulse skill to get the current project status, then update the pulse and project report after this non-trivial task.” Codex, Claude Code, Antigravity, or Grok Build first runs:
 
 ```sh
 octopulse context
@@ -140,6 +156,13 @@ curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/inst
 
 The installer automatically migrates only known v1 handlers in `~/.codex/hooks.json` and preserves other hooks. Disable legacy hooks from `config.toml`, plugins, or other sources with Codex `/hooks`, because hooks from multiple sources all run.
 
+Grok Build uses a separate `~/.grok/hooks/octopulse.json` containing only a `Stop` hook. It uses only the hook event name and `cwd`; it incrementally refreshes reports only for valid, registered, non-archived projects, never reads prompts, source code, diffs, or conversations, and never writes a marker or activity. Grok's passive hook stdout cannot inject model context, so no SessionStart hook is installed. Disable or remove it with:
+
+```sh
+curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent grok --without-grok-hooks
+curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent grok --remove-grok-hooks
+```
+
 ### Portfolio report
 
 ```sh
@@ -180,6 +203,7 @@ A marker is either empty or UTF-8 JSON under 4 KiB. See the complete [schema](sc
 | `octopulse archive --yes --reason TEXT` | Archive a project as `paused` / `stale`. |
 | `octopulse activity start\|finish --tool TOOL` | Record non-trivial AI tool activity without prompts. |
 | `octopulse hook codex-session-start\|codex-stop` | Used by Codex lifecycle hooks; never use it to infer project status manually. |
+| `octopulse hook grok-stop` | Used by the Grok Build Stop hook; never use it to infer project status manually. |
 | `octopulse project report` | Generate the current repo's snapshot, Markdown, and HTML. |
 | `octopulse portfolio report --refresh auto` | Generate a portfolio report from any directory. |
 | `octopulse validate .otcopulse` | Validate marker schema and size. |

@@ -8,9 +8,11 @@ AGENT="auto"
 FORCE=0
 WITHOUT_CODEX_HOOKS=0
 REMOVE_CODEX_HOOKS=0
+WITHOUT_GROK_HOOKS=0
+REMOVE_GROK_HOOKS=0
 
 usage() {
-  echo "Usage: install.sh [--version VERSION] [--agent auto|all|codex|claude|antigravity] [--force] [--without-codex-hooks|--remove-codex-hooks]" >&2
+  echo "Usage: install.sh [--version VERSION] [--agent auto|all|codex|claude|antigravity|grok] [--force] [--without-codex-hooks|--remove-codex-hooks] [--without-grok-hooks|--remove-grok-hooks]" >&2
 }
 
 while [ "$#" -gt 0 ]; do
@@ -20,14 +22,17 @@ while [ "$#" -gt 0 ]; do
     --force) FORCE=1; shift ;;
     --without-codex-hooks) WITHOUT_CODEX_HOOKS=1; shift ;;
     --remove-codex-hooks) REMOVE_CODEX_HOOKS=1; shift ;;
+    --without-grok-hooks) WITHOUT_GROK_HOOKS=1; shift ;;
+    --remove-grok-hooks) REMOVE_GROK_HOOKS=1; shift ;;
     --help) usage; exit 0 ;;
     *) usage; exit 2 ;;
   esac
 done
 
 [ "$WITHOUT_CODEX_HOOKS" -eq 0 ] || [ "$REMOVE_CODEX_HOOKS" -eq 0 ] || { usage; exit 2; }
+[ "$WITHOUT_GROK_HOOKS" -eq 0 ] || [ "$REMOVE_GROK_HOOKS" -eq 0 ] || { usage; exit 2; }
 
-case "$AGENT" in auto|all|codex|claude|antigravity) ;; *) usage; exit 2 ;; esac
+case "$AGENT" in auto|all|codex|claude|antigravity|grok) ;; *) usage; exit 2 ;; esac
 command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 1; }
 
@@ -106,22 +111,33 @@ install_skill() {
   echo "installed skill: $target"
 }
 
-if [ "$AGENT" = "auto" ]; then
-  if [ -d "$HOME/.agents" ]; then
-    AGENT="codex"
-  elif [ -d "$HOME/.claude" ]; then
-    AGENT="claude"
-  else
-    echo "no supported Agent home found; rerun with --agent codex|claude|antigravity" >&2
-    exit 1
-  fi
-fi
+INSTALL_SHARED=0
+INSTALL_CLAUDE=0
+INSTALL_CODEX=0
+INSTALL_GROK=0
+case "$AGENT" in
+  all) INSTALL_SHARED=1; INSTALL_CLAUDE=1; INSTALL_CODEX=1; INSTALL_GROK=1 ;;
+  codex) INSTALL_SHARED=1; INSTALL_CODEX=1 ;;
+  claude) INSTALL_CLAUDE=1 ;;
+  antigravity) INSTALL_SHARED=1 ;;
+  grok) INSTALL_SHARED=1; INSTALL_GROK=1 ;;
+  auto)
+    [ -d "$HOME/.agents" ] && INSTALL_SHARED=1
+    [ -d "$HOME/.codex" ] && { INSTALL_SHARED=1; INSTALL_CODEX=1; }
+    [ -d "$HOME/.claude" ] && INSTALL_CLAUDE=1
+    [ -d "$HOME/.grok" ] && { INSTALL_SHARED=1; INSTALL_GROK=1; }
+    if [ "$INSTALL_SHARED" -eq 0 ] && [ "$INSTALL_CLAUDE" -eq 0 ]; then
+      echo "no supported Agent home found; rerun with --agent codex|claude|antigravity|grok" >&2
+      exit 1
+    fi
+    ;;
+esac
 
-if [ "$AGENT" = "all" ] || [ "$AGENT" = "codex" ] || [ "$AGENT" = "antigravity" ]; then install_skill "$HOME/.agents/skills/octopulse"; fi
-if [ "$AGENT" = "all" ] || [ "$AGENT" = "claude" ]; then install_skill "$HOME/.claude/skills/octopulse"; fi
+[ "$INSTALL_SHARED" -eq 0 ] || install_skill "$HOME/.agents/skills/octopulse"
+[ "$INSTALL_CLAUDE" -eq 0 ] || install_skill "$HOME/.claude/skills/octopulse"
 
 CODEX_HOOKS_FILE="$HOME/.codex/hooks.json"
-if [ "$AGENT" = "all" ] || [ "$AGENT" = "codex" ]; then
+if [ "$INSTALL_CODEX" -eq 1 ]; then
   if [ -f "$HOME/.codex/config.toml" ] && grep -qE 'octopulse_codex_hook\.py|octopulse-status' "$HOME/.codex/config.toml"; then
     echo "legacy OctoPulse hook found in ~/.codex/config.toml; disable it with Codex /hooks to avoid duplicate hooks" >&2
   fi
@@ -129,6 +145,15 @@ if [ "$AGENT" = "all" ] || [ "$AGENT" = "codex" ]; then
     "$CLI_COMMAND" hook codex-remove --hooks-file "$CODEX_HOOKS_FILE"
   elif [ "$WITHOUT_CODEX_HOOKS" -eq 0 ]; then
     "$CLI_COMMAND" hook codex-install --hooks-file "$CODEX_HOOKS_FILE" --command "$CLI_COMMAND"
+  fi
+fi
+
+GROK_HOOKS_FILE="$HOME/.grok/hooks/octopulse.json"
+if [ "$INSTALL_GROK" -eq 1 ]; then
+  if [ "$REMOVE_GROK_HOOKS" -eq 1 ]; then
+    "$CLI_COMMAND" hook grok-remove --hooks-file "$GROK_HOOKS_FILE"
+  elif [ "$WITHOUT_GROK_HOOKS" -eq 0 ]; then
+    "$CLI_COMMAND" hook grok-install --hooks-file "$GROK_HOOKS_FILE" --command "$CLI_COMMAND"
   fi
 fi
 

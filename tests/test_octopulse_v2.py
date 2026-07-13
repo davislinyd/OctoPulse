@@ -138,13 +138,14 @@ class OctoPulseV2Tests(unittest.TestCase):
         core.write_json(legacy_path, {"phase": "maintenance", "health": "stable", "current_goal": "Old goal", "latest_summary": "Old summary", "next_action": "Old next", "verification": {"status": "passed"}})
         reports.record_activity(project, "codex", "start")
         reports.record_activity(project, "claude", "finish", "updated")
+        reports.record_activity(project, "grok", "finish", "unchanged")
 
         snapshot, cached = reports.refresh_project_report(project, history=10)
         self.assertFalse(cached)
         self.assertEqual([entry["subject"] for entry in snapshot["history"]], ["Verify secure path", "Add transport guard"])
         self.assertEqual(snapshot["legacy_context"]["goal"], "Old goal")
-        self.assertEqual({entry["tool"] for entry in snapshot["activity"]["tools"]}, {"codex", "claude"})
-        self.assertEqual({entry["tool"] for entry in snapshot["activity"]["recent_events"]}, {"codex", "claude"})
+        self.assertEqual({entry["tool"] for entry in snapshot["activity"]["tools"]}, {"codex", "claude", "grok"})
+        self.assertEqual({entry["tool"] for entry in snapshot["activity"]["recent_events"]}, {"codex", "claude", "grok"})
         self.assertTrue((project / ".git" / "info" / "exclude").read_text(encoding="utf-8").find("/.octopulse-reports/") >= 0)
         markdown = (reports.report_dir(project) / "latest.md").read_text(encoding="utf-8")
         self.assertIn("Recent commits", reports.project_markdown(snapshot, "en"))
@@ -247,6 +248,100 @@ class OctoPulseV2Tests(unittest.TestCase):
         core.write_json(project / ".otcopulse", marker)
         self.assertEqual(self.run_hook(["hook", "codex-stop"], payload), "")
         self.assertEqual(snapshot.stat().st_mtime_ns, snapshot_mtime)
+
+    def test_grok_stop_hook_is_gated_and_never_echoes_prompt(self):
+        project = self.make_git_project()
+        core.write_json(project / ".otcopulse", valid_marker("Grok Project"))
+        core.add_root(project)
+        payload = {"hookEventName": "Stop", "cwd": str(project), "prompt": "secret prompt must not leak"}
+        self.assertEqual(self.run_hook(["hook", "grok-stop"], payload), "")
+        snapshot = reports.snapshot_path(project)
+        portfolio = core.default_report_dir() / "projects.json"
+        self.assertTrue(snapshot.exists())
+        self.assertTrue(portfolio.exists())
+        snapshot_mtime = snapshot.stat().st_mtime_ns
+        portfolio_mtime = portfolio.stat().st_mtime_ns
+        self.assertEqual(self.run_hook(["hook", "grok-stop"], payload), "")
+        self.assertEqual(snapshot.stat().st_mtime_ns, snapshot_mtime)
+        self.assertEqual(portfolio.stat().st_mtime_ns, portfolio_mtime)
+
+        marker = valid_marker("Archived")
+        marker["phase"] = "paused"
+        marker["health"] = "stale"
+        core.write_json(project / ".otcopulse", marker)
+        self.assertEqual(self.run_hook(["hook", "grok-stop"], payload), "")
+        self.assertEqual(snapshot.stat().st_mtime_ns, snapshot_mtime)
+        self.assertEqual(self.run_hook(["hook", "grok-stop"], {"hookEventName": "Stop", "cwd": str(self.root)}), "")
+
+    def test_grok_hook_file_is_managed_without_touching_other_files(self):
+        hooks_dir = self.root / "grok" / "hooks"
+        hooks_dir.mkdir(parents=True)
+        other = hooks_dir / "other.json"
+        other.write_text('{"hooks":{"Stop":[]}}\n', encoding="utf-8")
+        hooks_file = hooks_dir / "octopulse.json"
+        result = hooks.install_grok_hooks(hooks_file, "/opt/octopulse")
+        self.assertTrue(result["changed"])
+        managed = json.loads(hooks_file.read_text(encoding="utf-8"))
+        self.assertEqual(managed["hooks"]["Stop"][0]["hooks"][0]["command"], "/opt/octopulse hook grok-stop")
+        self.assertFalse(hooks.install_grok_hooks(hooks_file, "/opt/octopulse")["changed"])
+        self.assertEqual(other.read_text(encoding="utf-8"), '{"hooks":{"Stop":[]}}\n')
+        self.assertTrue(hooks.remove_grok_hooks(hooks_file)["removed"])
+        self.assertFalse(hooks_file.exists())
+        self.assertTrue(other.exists())
+        hooks_file.write_text('{"hooks":{"Stop":[]}}\n', encoding="utf-8")
+        self.assertFalse(hooks.remove_grok_hooks(hooks_file)["removed"])
+        self.assertTrue(hooks_file.exists())
+
+    def test_grok_activity_and_guidance_are_supported(self):
+        project = self.make_git_project()
+        previous = Path.cwd()
+        try:
+            os.chdir(project)
+            self.assertEqual(cli.main(["init", "--yes", "--agent", "grok"]), 0)
+            self.assertTrue((project / "AGENTS.md").is_file())
+            self.assertEqual(cli.main(["activity", "start", "--tool", "grok"]), 0)
+        finally:
+            os.chdir(previous)
+
+    def test_installer_auto_adds_one_shared_skill_and_grok_hook(self):
+        release = self.root / "release"
+        subprocess.run(["sh", str(REPO_ROOT / "scripts" / "package-release.sh"), str(release)], cwd=REPO_ROOT, check=True)
+        bin_dir = self.root / "bin"
+        bin_dir.mkdir()
+        fake_curl = bin_dir / "curl"
+        fake_curl.write_text(
+            "#!/bin/sh\n"
+            "while [ \"$#\" -gt 0 ]; do\n"
+            "  if [ \"$1\" = \"-o\" ]; then output=\"$2\"; shift 2; continue; fi\n"
+            "  case \"$1\" in *octopulse.sha256) source=\"$OCTOPULSE_TEST_CHECKSUM\" ;; *octopulse.tar.gz) source=\"$OCTOPULSE_TEST_ARCHIVE\" ;; esac\n"
+            "  shift\n"
+            "done\n"
+            "cp \"$source\" \"$output\"\n",
+            encoding="utf-8",
+        )
+        fake_curl.chmod(0o755)
+        home = self.root / "agent-home"
+        (home / ".codex").mkdir(parents=True)
+        (home / ".grok" / "hooks").mkdir(parents=True)
+        other_hook = home / ".grok" / "hooks" / "other.json"
+        other_hook.write_text('{"hooks":{"Stop":[]}}\n', encoding="utf-8")
+        environment = os.environ | {
+            "HOME": str(home),
+            "OCTOPULSE_HOME": str(self.root / "installed-runtime"),
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "OCTOPULSE_TEST_ARCHIVE": str(release / "octopulse.tar.gz"),
+            "OCTOPULSE_TEST_CHECKSUM": str(release / "octopulse.sha256"),
+        }
+        subprocess.run(["sh", str(REPO_ROOT / "install.sh"), "--agent", "auto"], cwd=REPO_ROOT, env=environment, check=True)
+        self.assertTrue((home / ".agents" / "skills" / "octopulse" / "SKILL.md").is_file())
+        self.assertFalse((home / ".grok" / "skills" / "octopulse").exists())
+        grok_hook = json.loads((home / ".grok" / "hooks" / "octopulse.json").read_text(encoding="utf-8"))
+        self.assertIn("hook grok-stop", grok_hook["hooks"]["Stop"][0]["hooks"][0]["command"])
+        self.assertTrue((home / ".codex" / "hooks.json").is_file())
+        self.assertEqual(other_hook.read_text(encoding="utf-8"), '{"hooks":{"Stop":[]}}\n')
+        subprocess.run(["sh", str(REPO_ROOT / "install.sh"), "--agent", "grok", "--remove-grok-hooks"], cwd=REPO_ROOT, env=environment, check=True)
+        self.assertFalse((home / ".grok" / "hooks" / "octopulse.json").exists())
+        self.assertTrue(other_hook.exists())
 
     def test_codex_hook_config_migrates_v1_without_touching_other_handlers(self):
         hooks_file = self.root / "codex" / "hooks.json"

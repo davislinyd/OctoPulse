@@ -1,4 +1,4 @@
-"""Codex hook helpers with strict v2-only inputs and outputs."""
+"""Codex and Grok hook helpers with strict v2-only inputs and outputs."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from typing import Any
 
 V1_COMMAND_MARKERS = ("octopulse_codex_hook.py", "octopulse-status")
 V2_COMMAND_MARKERS = ("octopulse hook codex-session-start", "octopulse hook codex-stop")
+GROK_COMMAND_MARKER = "octopulse hook grok-stop"
 
 
 def read_payload(stream: Any) -> dict[str, Any] | None:
@@ -156,3 +157,62 @@ def remove_codex_hooks(path: Path) -> dict[str, Any]:
         temporary.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         temporary.replace(path)
     return {"hooks_file": str(path), "removed_v2_handlers": removed, "changed": bool(removed)}
+
+
+def _grok_config(command: str) -> dict[str, Any]:
+    quoted = shlex.quote(command)
+    return {
+        "hooks": {
+            "Stop": [
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": f"{quoted} hook grok-stop",
+                            "timeout": 5,
+                            "statusMessage": "Refreshing OctoPulse reports",
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+
+
+def _is_managed_grok_config(config: dict[str, Any]) -> bool:
+    hooks = config.get("hooks")
+    if not isinstance(hooks, dict) or set(hooks) != {"Stop"}:
+        return False
+    groups = hooks.get("Stop")
+    if not isinstance(groups, list) or len(groups) != 1 or not isinstance(groups[0], dict):
+        return False
+    handlers = groups[0].get("hooks")
+    return (
+        set(groups[0]) == {"hooks"}
+        and isinstance(handlers, list)
+        and len(handlers) == 1
+        and isinstance(handlers[0], dict)
+        and _is_handler(handlers[0].get("command"), (GROK_COMMAND_MARKER,))
+    )
+
+
+def install_grok_hooks(path: Path, command: str) -> dict[str, Any]:
+    config, existed = _load_config(path)
+    if existed and not _is_managed_grok_config(config):
+        raise ValueError(f"{path}: refusing to replace a non-OctoPulse Grok hook file")
+    updated = _grok_config(command)
+    changed = config != updated
+    if changed:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.tmp")
+        temporary.write_text(json.dumps(updated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(path)
+    return {"hooks_file": str(path), "changed": changed}
+
+
+def remove_grok_hooks(path: Path) -> dict[str, Any]:
+    config, existed = _load_config(path)
+    if not existed or not _is_managed_grok_config(config):
+        return {"hooks_file": str(path), "removed": False}
+    path.unlink()
+    return {"hooks_file": str(path), "removed": True}

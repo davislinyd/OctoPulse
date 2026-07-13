@@ -21,7 +21,7 @@ MAX_LEGACY_STATUS_BYTES = 65_536
 MAX_ACTIVITY_EVENTS = 200
 ACTIVITY_RETENTION_DAYS = 90
 SNAPSHOT_STALE_DAYS = 7
-TOOLS = {"codex", "claude", "antigravity"}
+TOOLS = {"codex", "claude", "antigravity", "grok"}
 RESULTS = {"updated", "unchanged"}
 LANGUAGES = {"zh-TW", "en"}
 

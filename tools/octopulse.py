@@ -36,7 +36,7 @@ def require_yes(args: argparse.Namespace) -> bool:
 
 def inject_guidance(root: Path, agent: str) -> list[Path]:
     names = []
-    for item in (["codex", "claude", "antigravity"] if agent == "all" else [agent]):
+    for item in (["codex", "claude", "antigravity", "grok"] if agent == "all" else [agent]):
         names.append("CLAUDE.md" if item == "claude" else "AGENTS.md")
     changed: list[Path] = []
     for name in sorted(set(names)):
@@ -184,6 +184,20 @@ def command_hook_stop(args: argparse.Namespace) -> int:
     cwd = payload.get("cwd")
     if not isinstance(cwd, str):
         return 0
+    return refresh_hook_reports(cwd)
+
+
+def command_hook_grok_stop(args: argparse.Namespace) -> int:
+    payload = hook_payload()
+    if not payload or payload.get("hookEventName") != "Stop":
+        return 0
+    cwd = payload.get("cwd")
+    if not isinstance(cwd, str):
+        return 0
+    return refresh_hook_reports(cwd)
+
+
+def refresh_hook_reports(cwd: str) -> int:
     root = reports.eligible_hook_project(Path(cwd))
     if root is None:
         return 0
@@ -216,6 +230,18 @@ def command_hook_remove_codex(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_hook_install_grok(args: argparse.Namespace) -> int:
+    result = hooks.install_grok_hooks(Path(args.hooks_file).expanduser(), args.command)
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
+def command_hook_remove_grok(args: argparse.Namespace) -> int:
+    result = hooks.remove_grok_hooks(Path(args.hooks_file).expanduser())
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="OctoPulse v2 marker-based status CLI")
     parser.add_argument("--version", action="version", version=f"%(prog)s {core.RELEASE_VERSION}")
@@ -224,7 +250,7 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--directory")
     init.add_argument("--yes", action="store_true")
     init.add_argument("--force", action="store_true")
-    init.add_argument("--agent", choices=["codex", "claude", "antigravity", "all"])
+    init.add_argument("--agent", choices=["codex", "claude", "antigravity", "grok", "all"])
     init.set_defaults(handler=command_init)
     context = subparsers.add_parser("context", help="Inspect the current project without writing")
     context.add_argument("--directory")
@@ -279,7 +305,7 @@ def build_parser() -> argparse.ArgumentParser:
     activity_finish.add_argument("--tool", choices=sorted(reports.TOOLS), required=True)
     activity_finish.add_argument("--result", choices=sorted(reports.RESULTS), default="updated")
     activity_finish.set_defaults(handler=command_activity)
-    hook = subparsers.add_parser("hook", help="Run or manage narrowly scoped Codex hooks")
+    hook = subparsers.add_parser("hook", help="Run or manage narrowly scoped agent hooks")
     hook_subparsers = hook.add_subparsers(dest="hook_command", required=True)
     hook_session_start = hook_subparsers.add_parser("codex-session-start")
     hook_session_start.set_defaults(handler=command_hook_session_start)
@@ -292,6 +318,15 @@ def build_parser() -> argparse.ArgumentParser:
     hook_remove = hook_subparsers.add_parser("codex-remove")
     hook_remove.add_argument("--hooks-file", required=True)
     hook_remove.set_defaults(handler=command_hook_remove_codex)
+    grok_stop = hook_subparsers.add_parser("grok-stop")
+    grok_stop.set_defaults(handler=command_hook_grok_stop)
+    grok_install = hook_subparsers.add_parser("grok-install")
+    grok_install.add_argument("--hooks-file", required=True)
+    grok_install.add_argument("--command", required=True)
+    grok_install.set_defaults(handler=command_hook_install_grok)
+    grok_remove = hook_subparsers.add_parser("grok-remove")
+    grok_remove.add_argument("--hooks-file", required=True)
+    grok_remove.set_defaults(handler=command_hook_remove_grok)
     archive = subparsers.add_parser("archive", help="Create a source-free stale pulse for a retired project")
     archive.add_argument("--directory")
     archive.add_argument("--yes", action="store_true")
