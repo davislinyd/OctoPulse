@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/davislinyd/OctoPulse/schemas/octopulse.schema.json",
-  "title": "OctoPulse v3 Project Pulse",
+  "title": "OctoPulse v3.1 Project Pulse",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "name", "last_updated", "phase", "health", "goal", "summary", "next_action", "verification", "attention"],
+  "required": ["schema_version", "name", "last_updated", "phase", "health", "goal", "summary", "next_action", "verification", "attention", "handoff"],
   "properties": {
-    "schema_version": {"const": 2},
+    "schema_version": {"const": 3},
     "name": {"type": "string", "maxLength": 160},
     "last_updated": {"type": "string", "format": "date-time"},
     "phase": {"enum": ["planning", "implementation", "verification", "maintenance", "paused"]},
@@ -24,6 +24,19 @@
         "last_verified_at": {"type": ["string", "null"], "format": "date-time"}
       }
     },
-    "attention": {"type": "array", "maxItems": 8, "items": {"type": "string"}}
+    "attention": {"type": "array", "maxItems": 8, "items": {"type": "string"}},
+    "handoff": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["tool", "created_at", "commit", "worktree_files", "read_first", "decisions"],
+      "properties": {
+        "tool": {"enum": ["codex", "claude", "antigravity", "grok"]},
+        "created_at": {"type": "string", "format": "date-time"},
+        "commit": {"type": ["string", "null"]},
+        "worktree_files": {"type": "array", "maxItems": 16, "items": {"type": "string", "minLength": 1, "maxLength": 240}},
+        "read_first": {"type": "array", "maxItems": 8, "items": {"type": "string", "minLength": 1, "maxLength": 240}},
+        "decisions": {"type": "array", "maxItems": 4, "items": {"type": "string", "minLength": 1, "maxLength": 240}}
+      }
+    }
   }
 }

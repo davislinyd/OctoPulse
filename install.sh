@@ -10,9 +10,11 @@ WITHOUT_CODEX_HOOKS=0
 REMOVE_CODEX_HOOKS=0
 WITHOUT_GROK_HOOKS=0
 REMOVE_GROK_HOOKS=0
+WITHOUT_CLAUDE_HOOKS=0
+REMOVE_CLAUDE_HOOKS=0
 
 usage() {
-  echo "Usage: install.sh [--version VERSION] [--agent auto|all|codex|claude|antigravity|grok] [--force] [--without-codex-hooks|--remove-codex-hooks] [--without-grok-hooks|--remove-grok-hooks]" >&2
+  echo "Usage: install.sh [--version VERSION] [--agent auto|all|codex|claude|antigravity|grok] [--force] [--without-codex-hooks|--remove-codex-hooks] [--without-claude-hooks|--remove-claude-hooks] [--without-grok-hooks|--remove-grok-hooks]" >&2
 }
 
 while [ "$#" -gt 0 ]; do
@@ -24,6 +26,8 @@ while [ "$#" -gt 0 ]; do
     --remove-codex-hooks) REMOVE_CODEX_HOOKS=1; shift ;;
     --without-grok-hooks) WITHOUT_GROK_HOOKS=1; shift ;;
     --remove-grok-hooks) REMOVE_GROK_HOOKS=1; shift ;;
+    --without-claude-hooks) WITHOUT_CLAUDE_HOOKS=1; shift ;;
+    --remove-claude-hooks) REMOVE_CLAUDE_HOOKS=1; shift ;;
     --help) usage; exit 0 ;;
     *) usage; exit 2 ;;
   esac
@@ -31,6 +35,7 @@ done
 
 [ "$WITHOUT_CODEX_HOOKS" -eq 0 ] || [ "$REMOVE_CODEX_HOOKS" -eq 0 ] || { usage; exit 2; }
 [ "$WITHOUT_GROK_HOOKS" -eq 0 ] || [ "$REMOVE_GROK_HOOKS" -eq 0 ] || { usage; exit 2; }
+[ "$WITHOUT_CLAUDE_HOOKS" -eq 0 ] || [ "$REMOVE_CLAUDE_HOOKS" -eq 0 ] || { usage; exit 2; }
 
 case "$AGENT" in auto|all|codex|claude|antigravity|grok) ;; *) usage; exit 2 ;; esac
 command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; exit 1; }
@@ -135,6 +140,16 @@ esac
 
 [ "$INSTALL_SHARED" -eq 0 ] || install_skill "$HOME/.agents/skills/octopulse"
 [ "$INSTALL_CLAUDE" -eq 0 ] || install_skill "$HOME/.claude/skills/octopulse"
+[ "$INSTALL_CODEX" -eq 0 ] || install_skill "$HOME/.codex/skills/octopulse"
+
+CLAUDE_SETTINGS_FILE="$HOME/.claude/settings.json"
+if [ "$INSTALL_CLAUDE" -eq 1 ]; then
+  if [ "$REMOVE_CLAUDE_HOOKS" -eq 1 ]; then
+    "$CLI_COMMAND" hook claude-remove --hooks-file "$CLAUDE_SETTINGS_FILE"
+  elif [ "$WITHOUT_CLAUDE_HOOKS" -eq 0 ]; then
+    "$CLI_COMMAND" hook claude-install --hooks-file "$CLAUDE_SETTINGS_FILE" --command "$CLI_COMMAND"
+  fi
+fi
 
 CODEX_HOOKS_FILE="$HOME/.codex/hooks.json"
 if [ "$INSTALL_CODEX" -eq 1 ]; then

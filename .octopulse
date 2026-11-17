@@ -1,0 +1,17 @@
+{
+  "schema_version": 3,
+  "name": "OctoPulse",
+  "last_updated": "2026-09-27T21:50:23+08:00",
+  "phase": "implementation",
+  "health": "active",
+  "goal": "讓目前專案的進度可以用一個命令讀出、用一個命令寫入。",
+  "summary": "Codex 的 skill 已換成現版，位置是 ~/.codex/skills/octopulse。舊的 octopulse-status 說明也已換成同一份內容。",
+  "next_action": "決定是否提交這批 3.1.0 變更。",
+  "verification": {
+    "status": "passed",
+    "last_command": "python3 -m unittest tests.test_octopulse_v2",
+    "last_verified_at": "2026-09-27T21:37:58+08:00"
+  },
+  "attention": [],
+  "handoff": null
+}

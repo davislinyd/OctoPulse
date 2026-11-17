@@ -12,14 +12,21 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-VERSION = 2
-RELEASE_VERSION = "3.0.0"
+VERSION = 3
+LEGACY_SCHEMA_VERSION = 2
+RELEASE_VERSION = "3.1.0"
 MARKER_NAME = ".octopulse"
 LEGACY_MARKER_NAME = ".otcopulse"
 MAX_MARKER_BYTES = 4096
 PHASES = {"planning", "implementation", "verification", "maintenance", "paused"}
 HEALTH_VALUES = {"active", "stable", "needs_attention", "blocked", "stale"}
 VERIFICATION_VALUES = {"passed", "failed", "not_run", "partial"}
+HANDOFF_TOOLS = {"codex", "claude", "antigravity", "grok"}
+MAX_HANDOFF_WORKTREE_FILES = 16
+MAX_HANDOFF_READ_FIRST = 8
+MAX_HANDOFF_DECISIONS = 4
+MAX_HANDOFF_PATH_LENGTH = 240
+MAX_HANDOFF_DECISION_LENGTH = 240
 SKIP_DIRECTORIES = {".git", ".hg", ".svn", "node_modules", "vendor", "dist", "build", ".venv", "venv", "__pycache__"}
 
 
@@ -120,7 +127,7 @@ def run_git(directory: Path, args: list[str]) -> tuple[str | None, str | None]:
         return None, str(exc)
     if result.returncode:
         return None, result.stderr.strip() or result.stdout.strip() or f"git exited {result.returncode}"
-    return result.stdout.strip(), None
+    return result.stdout.rstrip(), None
 
 
 def git_root(directory: Path) -> Path | None:
@@ -141,9 +148,14 @@ def git_facts(project_root: Path) -> dict[str, Any]:
 def validate_marker_payload(payload: Any, source: str = "marker") -> list[str]:
     if not isinstance(payload, dict):
         return [f"{source}: root value must be an object"]
+    schema_version = payload.get("schema_version")
+    if schema_version not in {LEGACY_SCHEMA_VERSION, VERSION}:
+        return [f"{source}: `schema_version` must be {LEGACY_SCHEMA_VERSION} or {VERSION}"]
     required = [
         "schema_version", "name", "last_updated", "phase", "health", "goal", "summary", "next_action", "verification", "attention",
     ]
+    if schema_version == VERSION:
+        required.append("handoff")
     errors = [f"{source}: missing required field `{field}`" for field in required if field not in payload]
     if errors:
         return errors
@@ -151,8 +163,6 @@ def validate_marker_payload(payload: Any, source: str = "marker") -> list[str]:
     for field in payload:
         if field not in allowed:
             errors.append(f"{source}: unknown field `{field}`")
-    if payload["schema_version"] != VERSION:
-        errors.append(f"{source}: `schema_version` must be {VERSION}")
     for field in ["name", "last_updated", "phase", "health", "goal", "summary", "next_action"]:
         if not isinstance(payload[field], str):
             errors.append(f"{source}: `{field}` must be a string")
@@ -197,6 +207,45 @@ def validate_marker_payload(payload: Any, source: str = "marker") -> list[str]:
         errors.append(f"{source}: `attention` must be an array of strings")
     elif len(attention) > 8:
         errors.append(f"{source}: `attention` cannot contain more than 8 items")
+    if schema_version == VERSION:
+        handoff = payload.get("handoff")
+        if handoff is not None:
+            if not isinstance(handoff, dict):
+                errors.append(f"{source}: `handoff` must be an object or null")
+            else:
+                required_handoff = {"tool", "created_at", "commit", "worktree_files", "read_first", "decisions"}
+                for field in required_handoff - set(handoff):
+                    errors.append(f"{source}: missing required field `handoff.{field}`")
+                for field in handoff:
+                    if field not in required_handoff:
+                        errors.append(f"{source}: unknown field `handoff.{field}`")
+                if handoff.get("tool") not in HANDOFF_TOOLS:
+                    errors.append(f"{source}: `handoff.tool` must be one of: {', '.join(sorted(HANDOFF_TOOLS))}")
+                created_at = handoff.get("created_at")
+                if not isinstance(created_at, str):
+                    errors.append(f"{source}: `handoff.created_at` must be a string")
+                else:
+                    try:
+                        datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                    except ValueError:
+                        errors.append(f"{source}: `handoff.created_at` must be ISO 8601")
+                if handoff.get("commit") is not None and not isinstance(handoff.get("commit"), str):
+                    errors.append(f"{source}: `handoff.commit` must be a string or null")
+                for field, maximum in (("worktree_files", MAX_HANDOFF_WORKTREE_FILES), ("read_first", MAX_HANDOFF_READ_FIRST)):
+                    values = handoff.get(field)
+                    if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+                        errors.append(f"{source}: `handoff.{field}` must be an array of strings")
+                    elif len(values) > maximum:
+                        errors.append(f"{source}: `handoff.{field}` cannot contain more than {maximum} items")
+                    elif any(not _valid_handoff_path(item) for item in values):
+                        errors.append(f"{source}: `handoff.{field}` contains an invalid relative path")
+                decisions = handoff.get("decisions")
+                if not isinstance(decisions, list) or not all(isinstance(item, str) for item in decisions):
+                    errors.append(f"{source}: `handoff.decisions` must be an array of strings")
+                elif len(decisions) > MAX_HANDOFF_DECISIONS:
+                    errors.append(f"{source}: `handoff.decisions` cannot contain more than {MAX_HANDOFF_DECISIONS} items")
+                elif any(not item or len(item) > MAX_HANDOFF_DECISION_LENGTH for item in decisions):
+                    errors.append(f"{source}: `handoff.decisions` items must be 1-{MAX_HANDOFF_DECISION_LENGTH} characters")
     try:
         encoded_size = len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) + 1
     except (TypeError, ValueError):
@@ -204,6 +253,11 @@ def validate_marker_payload(payload: Any, source: str = "marker") -> list[str]:
     if encoded_size > MAX_MARKER_BYTES:
         errors.append(f"{source}: marker exceeds {MAX_MARKER_BYTES} bytes")
     return errors
+
+
+def _valid_handoff_path(value: str) -> bool:
+    path = Path(value)
+    return bool(value) and len(value) <= MAX_HANDOFF_PATH_LENGTH and not path.is_absolute() and ".." not in path.parts and ".git" not in path.parts and value != MARKER_NAME
 
 
 def inspect_marker(path: Path) -> dict[str, Any]:
@@ -223,7 +277,95 @@ def inspect_marker(path: Path) -> dict[str, Any]:
     if error:
         return {"state": "invalid", "path": str(path), "errors": [error]}
     errors = validate_marker_payload(payload, str(path))
-    return {"state": "valid" if not errors else "invalid", "path": str(path), "payload": payload if not errors else None, "errors": errors}
+    if errors:
+        return {"state": "invalid", "path": str(path), "payload": None, "errors": errors}
+    if payload.get("schema_version") == LEGACY_SCHEMA_VERSION:
+        return {"state": "migration_required", "path": str(path), "payload": payload, "errors": ["marker schema v2 requires `octopulse migrate-schema --yes`"]}
+    return {"state": "valid", "path": str(path), "payload": payload, "errors": []}
+
+
+def worktree_files(project_root: Path) -> list[str]:
+    """Return a bounded list of changed filenames without reading their contents."""
+    porcelain, error = run_git(project_root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"])
+    if error or not porcelain:
+        return []
+    files: list[str] = []
+    entries = porcelain.split("\0")
+    index = 0
+    while index < len(entries):
+        entry = entries[index]
+        index += 1
+        if len(entry) < 4:
+            continue
+        status, path = entry[:2], entry[3:]
+        if path and path != MARKER_NAME and _valid_handoff_path(path) and path not in files:
+            files.append(path)
+        if "R" in status or "C" in status:
+            index += 1
+        if len(files) >= MAX_HANDOFF_WORKTREE_FILES:
+            break
+    return files
+
+
+def marker_dirty(project_root: Path) -> bool:
+    porcelain, error = run_git(project_root, ["status", "--porcelain=v1", "-z"])
+    if error or not porcelain:
+        return False
+    return any(entry[3:] == MARKER_NAME for entry in porcelain.split("\0") if len(entry) >= 4)
+
+
+def create_handoff(project_root: Path, tool: str, read_first: list[str], decisions: list[str]) -> dict[str, Any]:
+    if tool not in HANDOFF_TOOLS:
+        raise ValueError(f"invalid handoff tool: {tool}")
+    marker = project_root / MARKER_NAME
+    inspection = inspect_marker(marker)
+    if inspection["state"] != "valid":
+        raise ValueError(f"handoff requires a valid v{VERSION} marker (current state: {inspection['state']})")
+    normalized: list[str] = []
+    for raw_path in read_first:
+        path = Path(raw_path)
+        candidate = (project_root / path).resolve() if not path.is_absolute() else path.resolve()
+        if not _valid_handoff_path(raw_path) or not candidate.is_file() or not candidate.is_relative_to(project_root.resolve()):
+            raise ValueError(f"handoff read-first path must be an existing file inside the project: {raw_path}")
+        value = path.as_posix()
+        if value not in normalized:
+            normalized.append(value)
+    if len(normalized) > MAX_HANDOFF_READ_FIRST:
+        raise ValueError(f"handoff read-first cannot contain more than {MAX_HANDOFF_READ_FIRST} files")
+    if len(decisions) > MAX_HANDOFF_DECISIONS or any(not item or len(item) > MAX_HANDOFF_DECISION_LENGTH for item in decisions):
+        raise ValueError(f"handoff decisions must contain at most {MAX_HANDOFF_DECISIONS} items of {MAX_HANDOFF_DECISION_LENGTH} characters")
+    commit, error = run_git(project_root, ["rev-parse", "HEAD"])
+    payload = dict(inspection["payload"])
+    created_at = now_iso()
+    payload["last_updated"] = created_at
+    payload["handoff"] = {
+        "tool": tool,
+        "created_at": created_at,
+        "commit": commit if error is None else None,
+        "worktree_files": worktree_files(project_root),
+        "read_first": normalized,
+        "decisions": decisions,
+    }
+    errors = validate_marker_payload(payload, str(marker))
+    if errors:
+        raise ValueError("; ".join(errors))
+    write_json(marker, payload)
+    return payload
+
+
+def handoff_resume_packet(project_root: Path) -> dict[str, Any]:
+    inspection = inspect_marker(project_root / MARKER_NAME)
+    if inspection["state"] != "valid":
+        raise ValueError(f"handoff requires a valid v{VERSION} marker (current state: {inspection['state']})")
+    status = inspection["payload"]
+    return {
+        "status": {field: status[field] for field in ("name", "last_updated", "phase", "health", "goal", "summary", "next_action", "verification", "attention", "handoff")},
+        "git": git_facts(project_root),
+        "sync": {
+            "marker_dirty": marker_dirty(project_root),
+            "warning": "`.octopulse` has uncommitted changes; commit and push it before cross-device handoff." if marker_dirty(project_root) else None,
+        },
+    }
 
 
 def marker_for(directory: Path) -> tuple[Path | None, Path | None]:
@@ -244,6 +386,158 @@ def context_for(directory: Path) -> dict[str, Any]:
         "registered": str(root) in config["roots"],
         "errors": inspected["errors"],
     }
+
+
+def commit_subject(project_root: Path) -> str | None:
+    value, error = run_git(project_root, ["log", "-1", "--format=%s"])
+    return value if value and error is None else None
+
+
+DEFAULT_GOAL = "Keep this project visible in OctoPulse."
+DEFAULT_NEXT = "Review the OctoPulse report."
+
+
+def new_marker(root: Path, goal: str, next_action: str, summary: str | None = None, name: str | None = None, phase: str = "implementation", health: str = "active") -> dict[str, Any]:
+    """Return a valid v3 pulse. Summary falls back to the goal when omitted."""
+    return {
+        "schema_version": VERSION,
+        "name": name or root.name,
+        "last_updated": now_iso(),
+        "phase": phase,
+        "health": health,
+        "goal": goal,
+        "summary": goal if summary is None else summary,
+        "next_action": next_action,
+        "verification": {"status": "not_run", "last_command": "", "last_verified_at": None},
+        "attention": [],
+        "handoff": None,
+    }
+
+
+def status_view(directory: Path) -> dict[str, Any]:
+    """Return the pulse and lightweight Git facts without reading source."""
+    root, marker = marker_for(directory)
+    if root is None or marker is None:
+        return {
+            "project_root": None,
+            "marker": None,
+            "state": "not_git_project",
+            "registered": False,
+            "errors": [],
+            "git": {"available": False, "branch": None, "commit": None, "dirty": None, "subject": None},
+            "status": None,
+            "next_command": None,
+        }
+    inspected = inspect_marker(marker)
+    git = git_facts(root)
+    git["subject"] = commit_subject(root)
+    state = inspected["state"]
+    next_command = {
+        "missing": "octopulse update --yes",
+        "uninitialized": "octopulse update --yes",
+        "migration_required": "octopulse update --yes",
+        "invalid": "octopulse validate .octopulse",
+    }.get(state)
+    return {
+        "project_root": str(root),
+        "marker": str(marker),
+        "state": state,
+        "registered": str(root) in load_config()["roots"],
+        "errors": inspected["errors"],
+        "git": git,
+        "status": inspected.get("payload") if state in {"valid", "migration_required"} else None,
+        "next_command": next_command,
+    }
+
+
+_STATUS_COPY = {
+    "zh-TW": {
+        "state": "狀態",
+        "phase": "階段",
+        "health": "健康",
+        "updated": "更新",
+        "goal": "目標",
+        "summary": "摘要",
+        "next": "下一步",
+        "verification": "驗證",
+        "attention": "注意",
+        "none": "無",
+        "dirty_yes": "工作區有未提交變更",
+        "dirty_no": "工作區乾淨",
+        "git_unavailable": "Git 狀態不可用",
+        "recent": "最近提交",
+        "command": "指令",
+        "states": {
+            "missing": "這個 Git 專案還沒有 .octopulse。",
+            "uninitialized": ".octopulse 還是空檔。",
+            "invalid": ".octopulse 不符合 schema。",
+            "migration_required": "marker 仍是 schema v2。",
+            "not_git_project": "目前目錄不在 Git 工作區內。",
+        },
+    },
+    "en": {
+        "state": "State",
+        "phase": "Phase",
+        "health": "Health",
+        "updated": "Updated",
+        "goal": "Goal",
+        "summary": "Summary",
+        "next": "Next",
+        "verification": "Verification",
+        "attention": "Attention",
+        "none": "None",
+        "dirty_yes": "Uncommitted changes",
+        "dirty_no": "Clean worktree",
+        "git_unavailable": "Git status unavailable",
+        "recent": "Latest commit",
+        "command": "Command",
+        "states": {
+            "missing": "This Git project has no .octopulse.",
+            "uninitialized": ".octopulse is empty.",
+            "invalid": ".octopulse does not match the schema.",
+            "migration_required": "The marker is still schema v2.",
+            "not_git_project": "The current directory is not inside a Git work tree.",
+        },
+    },
+}
+
+
+def format_status(view: dict[str, Any], language: str = "zh-TW") -> str:
+    copy = _STATUS_COPY[language if language in _STATUS_COPY else "zh-TW"]
+    status = view.get("status") or {}
+    root = view.get("project_root")
+    title = status.get("name") or (Path(root).name if root else "OctoPulse")
+    lines = [f"OctoPulse · {title}"]
+    state = view["state"]
+    if state != "valid":
+        lines.append(f"{copy['state']}: {state}")
+        if state in copy["states"]:
+            lines.append(copy["states"][state])
+        if state == "invalid":
+            lines.extend(view.get("errors") or [])
+    if status:
+        lines.append(f"{copy['phase']}: {status.get('phase', '—')} · {copy['health']}: {status.get('health', '—')}")
+        lines.append(f"{copy['updated']}: {status.get('last_updated', '—')}")
+        lines.append(f"{copy['goal']}: {status.get('goal', '—')}")
+        lines.append(f"{copy['summary']}: {status.get('summary', '—')}")
+        lines.append(f"{copy['next']}: {status.get('next_action', '—')}")
+        verification = status.get("verification") or {}
+        command = verification.get("last_command") or ""
+        verified = verification.get("status", "—")
+        lines.append(f"{copy['verification']}: {verified} ({command})" if command else f"{copy['verification']}: {verified}")
+        attention = status.get("attention") or []
+        lines.append(f"{copy['attention']}: {', '.join(attention) if attention else copy['none']}")
+    git = view.get("git") or {}
+    if git.get("available"):
+        dirty = copy["dirty_yes"] if git.get("dirty") else copy["dirty_no"]
+        lines.append(f"Git: {git.get('branch') or '—'} @ {git.get('commit') or '—'} · {dirty}")
+        if git.get("subject"):
+            lines.append(f"{copy['recent']}: {git['subject']}")
+    elif state != "not_git_project":
+        lines.append(f"Git: {copy['git_unavailable']}")
+    if view.get("next_command"):
+        lines.append(f"{copy['command']}: {view['next_command']}")
+    return "\n".join(lines) + "\n"
 
 
 def discover_markers(roots: Iterable[str]) -> tuple[list[Path], list[str]]:
@@ -378,4 +672,5 @@ def archive_marker(root: Path, reason: str) -> dict[str, Any]:
             "last_verified_at": None,
         },
         "attention": [],
+        "handoff": None,
     }

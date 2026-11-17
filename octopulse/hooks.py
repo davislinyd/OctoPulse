@@ -11,7 +11,9 @@ from typing import Any
 
 V1_COMMAND_MARKERS = ("octopulse_codex_hook.py", "octopulse-status")
 V2_COMMAND_MARKERS = ("octopulse hook codex-session-start", "octopulse hook codex-stop")
+CLAUDE_COMMAND_MARKERS = ("octopulse hook claude-session-start", "octopulse hook claude-stop")
 GROK_COMMAND_MARKER = "octopulse hook grok-stop"
+_GROK_EVENT_NAMES = {"session_start": "SessionStart", "stop": "Stop"}
 
 
 def read_payload(stream: Any) -> dict[str, Any] | None:
@@ -23,8 +25,24 @@ def read_payload(stream: Any) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def canonical_event_name(payload: dict[str, Any] | None) -> str | None:
+    """Return the PascalCase event name used by Codex and Claude Code.
+
+    Grok Build sends that name in `hook_event_name` and its own snake_case name in `hookEventName`.
+    """
+    if not isinstance(payload, dict):
+        return None
+    claude_name = payload.get("hook_event_name")
+    if isinstance(claude_name, str) and claude_name:
+        return claude_name
+    native = payload.get("hookEventName")
+    if not isinstance(native, str) or not native:
+        return None
+    return _GROK_EVENT_NAMES.get(native, native)
+
+
 def codex_context_message() -> str:
-    return "OctoPulse: use the global skill; read only .octopulse and lightweight Git facts."
+    return "OctoPulse: use the global skill and run `octopulse status`."
 
 
 def session_start_output() -> str:
@@ -194,6 +212,67 @@ def _is_managed_grok_config(config: dict[str, Any]) -> bool:
         and isinstance(handlers[0], dict)
         and _is_handler(handlers[0].get("command"), (GROK_COMMAND_MARKER,))
     )
+
+
+def _add_claude_handlers(config: dict[str, Any], command: str) -> None:
+    hooks = config.setdefault("hooks", {})
+    if not isinstance(hooks, dict):
+        raise ValueError("settings.json: `hooks` must be an object")
+    quoted = shlex.quote(command)
+    hooks.setdefault("SessionStart", []).append(
+        {
+            "matcher": "startup|resume|clear|compact|fork",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": f"{quoted} hook claude-session-start",
+                    "timeout": 5,
+                    "statusMessage": "Loading OctoPulse reminder",
+                }
+            ],
+        }
+    )
+    hooks.setdefault("Stop", []).append(
+        {
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": f"{quoted} hook claude-stop",
+                    "timeout": 5,
+                    "statusMessage": "Refreshing OctoPulse reports",
+                }
+            ],
+        }
+    )
+
+
+def install_claude_hooks(path: Path, command: str) -> dict[str, Any]:
+    """Add OctoPulse handlers to a Claude Code settings file without replacing other hooks."""
+    config, _existed = _load_config(path)
+    original = json.dumps(config, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    _remove_matching(config, "SessionStart", CLAUDE_COMMAND_MARKERS)
+    _remove_matching(config, "Stop", CLAUDE_COMMAND_MARKERS)
+    _add_claude_handlers(config, command)
+    changed = original != json.dumps(config, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    if changed:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.tmp")
+        temporary.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(path)
+    return {"hooks_file": str(path), "changed": changed}
+
+
+def remove_claude_hooks(path: Path) -> dict[str, Any]:
+    config, existed = _load_config(path)
+    if not existed:
+        return {"hooks_file": str(path), "removed": False}
+    removed = _remove_matching(config, "SessionStart", CLAUDE_COMMAND_MARKERS)
+    removed += _remove_matching(config, "Stop", CLAUDE_COMMAND_MARKERS)
+    if removed:
+        temporary = path.with_name(f".{path.name}.tmp")
+        temporary.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(path)
+    return {"hooks_file": str(path), "removed": bool(removed)}
 
 
 def install_grok_hooks(path: Path, command: str) -> dict[str, Any]:

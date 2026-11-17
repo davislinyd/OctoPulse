@@ -2,7 +2,7 @@
 
 [繁體中文](README.md) · [English](README.en.md)
 
-OctoPulse v3.0.0 是為 AI 輔助開發設計的輕量專案進度系統。每個要追蹤的 Git 專案只保留一個很小的 `.octopulse`，讓 Agent 取得可靠進度時不必重新閱讀原始碼、歷史紀錄或所有專案報表。
+OctoPulse v3.1.0 是為 AI 輔助開發設計的輕量專案進度系統。每個要追蹤的 Git 專案只保留一個很小的 `.octopulse`，讓 Agent 取得可靠進度時不必重新閱讀原始碼、歷史紀錄或所有專案報表。
 
 ![OctoPulse 資料流程](docs/octopulse-flow.svg)
 
@@ -10,12 +10,13 @@ OctoPulse v3.0.0 是為 AI 輔助開發設計的輕量專案進度系統。每�
 
 - **小型、明確的脈衝檔。** `.octopulse` 是唯一的進度來源；空檔代表尚未初始化，非空檔必須符合嚴格 JSON schema，且上限為 4 KiB。
 - **上下文預算優先。** 一般 Agent session 只讀取 Git root、輕量 Git 事實與目前專案的 marker。報表不會自動注入 prompt。
+- **模型無關的交接。** handoff 只保存最新的工具、Git 變更檔名、必讀檔案與短決策；不保存 prompt、對話、diff 或檔案內容。
 - **腳本產生彙總。** `octopulse portfolio report` 只尋找已登錄根目錄中的 marker，總覽只讀取專案快照；`auto` 僅在 marker、Git 輕量事實、legacy context 或活動指紋改變時刷新該專案。
 - **明確且可逆的寫入。** 初始化、封存及注入 Agent 指引都要求明確指令；OctoPulse 不會修改或刪除 `PROJECT_STATUS.md` 與 `.ai/status.json`。專案報告可選擇唯讀、白名單擷取小型 `.ai/status.json` 作 legacy context。
 
 ## 安裝
 
-安裝最新 GitHub Release。Codex、Antigravity 與 Grok Build 共用 `~/.agents/skills`；`auto` 模式會偵測已安裝的平台，但只安裝一份 shared global skill，避免同一個 loader 載入重複 skill。請選擇其一：
+安裝最新 GitHub Release。Antigravity 與 Grok Build 共用 `~/.agents/skills`。Codex 另外安裝到 `~/.codex/skills/octopulse`，Claude Code 安裝到 `~/.claude/skills/octopulse`。`auto` 模式會偵測已安裝的平台。請選擇其一：
 
 首次安裝，或保留既有 skill：
 
@@ -29,7 +30,7 @@ curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/inst
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --force
 ```
 
-只有在需要同時支援所有平台時，才在上述任一指令加上 `--agent all`；Codex、Antigravity 與 Grok Build 仍共用同一份 `~/.agents/skills/octopulse`：
+只有在需要同時支援所有平台時，才在上述任一指令加上 `--agent all`。Antigravity 與 Grok Build 共用 `~/.agents/skills/octopulse`，Codex 使用 `~/.codex/skills/octopulse`：
 
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent all
@@ -50,12 +51,14 @@ grok inspect
 
 `grok inspect` 應顯示 `~/.agents/skills/octopulse` 與 `~/.grok/hooks/octopulse.json`。grok.com 網頁版 Skills 無法直接執行本機 `octopulse` CLI，並非本整合的支援範圍。
 
-在 Grok Build 的非瑣碎工作開始與結束時，skill 會明確記錄最小活動事件：
+在 Grok Build 讀取進度，並在語意狀態改變時寫回：
 
 ```sh
-octopulse activity start --tool grok
-octopulse activity finish --tool grok --result updated
+octopulse status
+octopulse update --tool grok --summary "..." --next "..."
 ```
+
+`update` 會驗證 marker、記一筆 finish，並刷新專案報告。`activity start|finish` 仍可單獨使用。
 
 ## 使用方式
 
@@ -69,21 +72,39 @@ octopulse migrate-marker --yes
 
 此命令只在同一目錄原子重新命名 marker，不讀取或改寫其內容，也不讀取原始碼、Git history 或 legacy status。兩種 marker 同時存在時會拒絕操作；新 marker 已存在或兩者皆不存在時安全回報結果。安裝器不會自動遷移任何專案。
 
+### 從 marker schema v2 升級
+
+新版 CLI 將有效的 schema v2 marker 回報為 `migration_required`，仍可唯讀產生報告，但不可建立 handoff。先更新所有開發環境的 OctoPulse CLI 與 skill，再在每個要交接的專案明確執行：
+
+```sh
+octopulse migrate-schema --yes
+```
+
+此命令只將 marker 升級為 schema v3 並加入 `"handoff": null`；不讀取原始碼、對話或 Git history。
+
 ### 追蹤正在維護的專案
 
-在專案的 Git root 中執行：
+在專案的 Git root 讀取目前進度：
 
 ```sh
-octopulse init --yes
+octopulse status
 ```
 
-`init` 會建立空的 `.octopulse`，並將 Git root 加入使用者的受信任掃描根目錄。人類已決定初始化時，不需要先執行 `context`；它是 AI skill 的唯讀診斷步驟。非瑣碎工作結束時，Agent 僅在目標、摘要、下一步、驗證或注意事項有實質變化時更新 marker，接著驗證：
+第一次寫入語意狀態：
 
 ```sh
-octopulse validate .octopulse
+octopulse update --yes --goal "Ship the current milestone." --next "Open the pull request."
 ```
 
-需要為專案加入持久化提醒時，明確指定 adapter；此動作才會以最小區塊更新 `AGENTS.md` 或 `CLAUDE.md`：
+`update --yes` 會建立有效的 `.octopulse`、註冊 Git root，並在寫入前驗證。若 marker 已是 schema v2，同一個命令會把它升到 v3、保留原有欄位並註冊根目錄。每次成功寫入都會刷新專案報告與總覽。之後只帶要改的欄位：
+
+```sh
+octopulse update --summary "The current work is verified locally." --next "Open the pull request."
+```
+
+對 Agent 說「我要將專案進度更新到 OctoPulse」時，它會在同一輪完成上面的設定，不再另問一次。寫完即可打開兩個報告：目前專案的 `.octopulse-reports/index.html`，以及所有已註冊專案的 `~/.config/octopulse/reports/index.html`。此後 Codex、Claude Code 與 Grok 的 Stop hook 會在這個已納管專案的後續回合自動刷新報告。
+
+`init --yes` 仍可建立空 marker。需要持久化提醒時，才用 `--agent` 更新 `AGENTS.md` 或 `CLAUDE.md`：
 
 ```sh
 octopulse init --yes --agent codex
@@ -91,42 +112,41 @@ octopulse init --yes --agent codex
 
 ### 使用情境：由 AI Agent 讀取 skill
 
-完成 global skill 安裝後，在已納管專案中直接告訴 Agent：「使用 OctoPulse skill 取得目前專案狀態，完成這項非瑣碎工作後更新 pulse 與專案報告。」Codex、Claude Code、Antigravity 或 Grok Build 會先執行：
+完成 global skill 安裝後，告訴 Agent：「使用 OctoPulse skill 讀取目前專案狀態；若這項工作改變目標、摘要、下一步、驗證或注意事項，用 update 寫回。」Agent 先執行：
 
 ```sh
-octopulse context
+octopulse status
 ```
 
-若回傳 `valid`，skill 只讀取 `.octopulse` 與輕量 Git 事實；工作開始與結束時，分別記錄不含 prompt 的工具事件：
+狀態為 `valid` 時，以這份輸出為進度。換模型時才讀取交接：
 
 ```sh
-octopulse activity start --tool codex
-# Agent 完成工作；僅在語意狀態確實改變時更新 .octopulse
-octopulse validate .octopulse
-octopulse activity finish --tool codex --result updated
-octopulse project report
+octopulse handoff show
 ```
 
-`context` 與後續指令由 Agent 在同一輪 session 連續執行，不會形成兩個對話。若你的要求已明確表示「初始化 OctoPulse」且狀態為 `missing`，Agent 可在同一輪執行 `context` 後立即執行 `octopulse init --yes`。`uninitialized` 表示空 marker 已存在，不會重建；Agent 會等待你提供目標或在後續非瑣碎工作有明確事實時再建立語意狀態。只有你要求查看狀態、但結果為 `missing` 時，skill 才會先詢問是否建立 marker；`invalid` marker 的修復也一律先確認。不會掃描原始碼來猜測進度。跨專案總覽時，明確要求「使用 OctoPulse skill 產生所有納管專案的總報告」，skill 會在任何目錄執行 `octopulse portfolio report --refresh auto --explain`。
+`handoff show` 會輸出不超過 marker 上限的 resume packet。接手模型只讀取 `read_first` 指定檔案與必要 Git 變更，不可為恢復上下文掃描整個專案；資訊仍不足時才擴大範圍。工作結束且語意狀態有變時：
+
+```sh
+octopulse update --tool codex --summary "The marker write path is verified." --next "Commit the pulse with the work."
+```
+
+這次 `update` 會驗證 marker、記一筆 finish，並刷新專案報告。換模型前另執行 `octopulse handoff create`。`activity start|finish` 與單獨的 `validate` 仍可使用，但不是預設收尾。
+
+跨裝置切換時，將 `.octopulse` 與程式變更一併 commit 並 push。`handoff show` 若偵測到未提交的 marker，會明確警告它只可在本機交接。各平台的完整對話由該平台自行保存，OctoPulse 不複製或同步對話。
+
+沒有明確要求更新進度時，Agent 只檢視報告：目前專案用 `octopulse status`，所有納管專案用 `octopulse portfolio report --refresh auto --explain`。它不會詢問 goal 或 next，也不會寫 marker。若要求是把專案進度更新到 OctoPulse，Agent 在同一輪執行 `octopulse update --yes --tool <目前工具>`；使用者有說明的 goal、summary、next 才帶入，沒說的使用預設文字。schema v2 也用同一個命令升級。`invalid` 的修復一律先確認。跨專案總覽時，skill 會在任何目錄執行 `octopulse portfolio report --refresh auto --explain`。
 
 ### 使用情境：人類或自動化直接執行
 
-不使用 AI 時，仍可在專案 Git root 以 shell 或 CI 腳本執行相同流程。初始化後，由人類以編輯器維護 `.octopulse`；只有狀態有實質變化才寫入並驗證：
+不使用 AI 時，在專案 Git root 執行：
 
 ```sh
-octopulse init --yes
-# 以編輯器更新 .octopulse 的 goal、summary、next_action、verification 或 attention
-octopulse validate .octopulse
+octopulse status
+octopulse update --summary "..." --next "..."
 octopulse project report --lang zh-TW
 ```
 
-需要留下開發工具活動時，明確包住一次非瑣碎作業；沒有使用 AI 時可省略這兩行：
-
-```sh
-octopulse activity start --tool claude
-# 執行開發、測試或審查
-octopulse activity finish --tool claude --result unchanged
-```
+要一併留下工具活動時，把 `--tool` 加在 `update` 上。沒有使用 AI 時省略 `--tool`。
 
 在任何目錄產生總覽，或在 CI 中指定輸出位置：
 
@@ -146,18 +166,24 @@ octopulse archive --yes --reason "Superseded by the new platform."
 
 ### 專案報告與 AI 工具活動
 
-在目前 repo 建立獨立且本機忽略的專案快照與報告：
+提交完成後，若這次變更是目前的 AI 工具做的，把工具與對話編號記在本機，不寫進 commit：
 
 ```sh
-octopulse activity start --tool codex
-# 完成非瑣碎工作後
+octopulse session record --commit HEAD --tool claude --session "$SESSION_ID"
+```
+
+報告會在該提交旁顯示工具名稱。有對話編號時，「打開對話」會透過 `octopulse://resume?commit=<sha>` 在這台電腦恢復該對話。這個紀錄在 `.ai/octopulse-sessions.jsonl`，不會被 push。
+
+`octopulse update --tool codex` 會記一筆 finish，並刷新目前 repo 的專案報告與總覽。成功寫入 marker 時也會刷新這兩份報告。也可以分開執行：
+
+```sh
 octopulse activity finish --tool codex --result updated
 octopulse project report
 ```
 
 產物位於 `.octopulse-reports/`，包含 `snapshot.json`、`latest.md`、`index.html` 與最小 `activity.jsonl`。專案報告只讀 marker、Git metadata、最近 10 筆 commit subject、活動事件與可選的小型 `.ai/status.json`；不讀取原始碼或 diff。`.octopulse` 保持語意狀態唯一來源，legacy status 只作唯讀 context。
 
-當安裝器偵測到 Codex 時，會自動遷移已知的 v1 `UserPromptSubmit` hook，改為兩個全域 v3 hooks：`SessionStart` 在 `startup|resume` 僅注入一次極短 skill 提醒；`Stop` 僅在有效、已註冊且非封存的專案更新已變更的報告。它們不讀 prompt、原始碼、diff 或對話，不寫 `.octopulse` 或 activity。若要停用或移除，重新安裝時指定：
+當安裝器偵測到 Codex 時，會自動遷移已知的 v1 `UserPromptSubmit` hook，改為兩個全域 v3 hooks：`SessionStart` 在 `startup|resume` 注入一次極短 skill 提醒；`Stop` 僅在有效、已註冊且非封存的專案更新已變更的報告。它們讀取 `hook_event_name` 與 `cwd`，不讀 prompt、原始碼、diff 或對話，不寫 `.octopulse` 或 activity。若要停用或移除，重新安裝時指定：
 
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --without-codex-hooks
@@ -166,7 +192,14 @@ curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/inst
 
 安裝器只自動遷移 `~/.codex/hooks.json` 的已知 v1 handler，保留其他 hooks。若舊設定位於 `config.toml`、plugin 或其他來源，請以 Codex `/hooks` 停用，因為多個來源的 hooks 都會執行。
 
-Grok Build 使用獨立的 `~/.grok/hooks/octopulse.json`，只安裝 `Stop` hook。它只使用 hook JSON 的事件名稱與 `cwd`；僅在有效、已納管、非封存專案中增量刷新報告，不讀 prompt、原始碼、diff 或對話，亦不寫 marker 或 activity。Grok 的被動 hook 無法將 stdout 注入模型，因此不安裝 SessionStart hook。若要停用或移除：
+Claude Code 會把同一組行為併入既有的 `~/.claude/settings.json`，保留檔案裡的其他設定與 hooks。`SessionStart` 的 matcher 是 `startup|resume|clear|compact|fork`，stdout 使用 Claude 會讀取的 `hookSpecificOutput.additionalContext`。`Stop` 只刷新報告，不回傳會擋住結束的 `additionalContext`。若要停用或移除：
+
+```sh
+curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent claude --without-claude-hooks
+curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent claude --remove-claude-hooks
+```
+
+Grok Build 使用獨立的 `~/.grok/hooks/octopulse.json`，只安裝 `Stop` hook。目前的 stdin 同時帶有 `hook_event_name: "Stop"` 與 `hookEventName: "stop"`；handler 兩種都接受，並且只使用 `cwd`。它僅在有效、已納管、非封存專案中增量刷新報告，不讀 prompt、原始碼、diff 或對話，亦不寫 marker 或 activity。Grok 的 `SessionStart` stdout 不會進入模型，因此不安裝 SessionStart hook，也不在 `Stop` 回傳會讓回合繼續的 `additionalContext`。若要停用或移除：
 
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent grok --without-grok-hooks
@@ -187,7 +220,7 @@ marker 是空檔或不超過 4 KiB 的 UTF-8 JSON。完整定義請見 [schema](
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "name": "Example Project",
   "last_updated": "2026-07-12T10:00:00+08:00",
   "phase": "implementation",
@@ -200,7 +233,15 @@ marker 是空檔或不超過 4 KiB 的 UTF-8 JSON。完整定義請見 [schema](
     "last_command": "python3 -m unittest",
     "last_verified_at": "2026-07-12T10:00:00+08:00"
   },
-  "attention": []
+  "attention": [],
+  "handoff": {
+    "tool": "codex",
+    "created_at": "2026-07-12T10:00:00+08:00",
+    "commit": "0123456789abcdef",
+    "worktree_files": ["octopulse/core.py"],
+    "read_first": ["octopulse/core.py"],
+    "decisions": ["Keep the marker under 4 KiB."]
+  }
 }
 ```
 
@@ -208,12 +249,17 @@ marker 是空檔或不超過 4 KiB 的 UTF-8 JSON。完整定義請見 [schema](
 
 | 命令 | 用途 |
 | --- | --- |
+| `octopulse` / `octopulse status` | 印出目前專案的進度。`--json` 給 Agent，`--lang en` 印英文。 |
+| `octopulse update` | 建立或修補 marker。缺檔或空檔時 `--yes` 即可，沒有帶的 goal 與 next 使用預設文字。`--yes` 也會把 schema v2 升到 v3，並刷新兩個報告。 |
 | `octopulse context` | 唯讀檢查目前 Git 專案與 marker 狀態。 |
 | `octopulse init --yes` | 建立空 marker 並登錄根目錄。 |
 | `octopulse migrate-marker --yes` | 將同一 Git root 的 v2 `.otcopulse` 原子改名為 `.octopulse`。 |
+| `octopulse migrate-schema --yes` | 明確將有效的 schema v2 marker 升級為 v3。 |
+| `octopulse handoff create\|show` | 寫入最新交接，或讀取 token 受限的 resume packet。 |
 | `octopulse archive --yes --reason TEXT` | 封存專案為 `paused` / `stale`。 |
 | `octopulse activity start\|finish --tool TOOL` | 記錄非瑣碎 AI 工具活動，不含 prompt。 |
 | `octopulse hook codex-session-start\|codex-stop` | 供 Codex lifecycle hook 使用；不可手動用於推測專案狀態。 |
+| `octopulse hook claude-session-start\|claude-stop` | 供 Claude Code lifecycle hook 使用；不可手動用於推測專案狀態。 |
 | `octopulse hook grok-stop` | 供 Grok Build Stop hook 使用；不可手動用於推測專案狀態。 |
 | `octopulse project report` | 產生目前 repo 的專案快照、Markdown 與 HTML。 |
 | `octopulse portfolio report --refresh auto` | 在任意目錄產生所有納管專案總報告。 |
