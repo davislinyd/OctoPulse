@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from octopulse import core, hooks, reports
+from octopulse import core, hooks, journal, reports
 
 
 GUIDANCE_BLOCK = """<!-- octopulse:start -->
@@ -267,10 +267,69 @@ def command_handoff_show(args: argparse.Namespace) -> int:
 
 def command_status(args: argparse.Namespace) -> int:
     view = core.status_view(current_directory(args.directory))
+    root = Path(view["project_root"]) if view["state"] == "valid" else None
+    summary = journal.summary(root) if root and journal.journal_path(root).is_file() else None
     if args.json:
+        if summary:
+            view["journal"] = summary
         print(json.dumps(view, ensure_ascii=False))
     else:
         print(core.format_status(view, args.lang), end="")
+        if summary:
+            last = summary["last_event_at"] or "—"
+            print(f"Journal: {summary['open_todos']} open todos · last {last}" if args.lang == "en" else f"記錄: {summary['open_todos']} 項待辦 · 最近 {last}")
+    return 0
+
+
+def _ingest_journal(root: Path, tool: str | None = None, payload: dict | None = None) -> dict:
+    """Ingest journal facts and link commits made in this session. Callers hold the project lock."""
+    result = journal.ingest(root, tool, payload)
+    if result["links"] and tool in reports.SESSION_TOOLS and payload:
+        recorded = reports.load_sessions(root)
+        for commit in result["links"]:
+            if commit not in recorded:
+                reports.record_session(root, commit, tool, payload["session_id"])
+    return result
+
+
+def command_journal_ingest(args: argparse.Namespace) -> int:
+    root = core.git_root(current_directory(args.project))
+    if root is None:
+        print("error: project must be inside a Git work tree", file=sys.stderr)
+        return 1
+    with reports.project_hook_lock(root) as locked:
+        if not locked:
+            print("error: another OctoPulse refresh is running", file=sys.stderr)
+            return 1
+        result = _ingest_journal(root)
+        reports.refresh_project_report(root)
+    print(json.dumps({"project": str(root), **result}, ensure_ascii=False))
+    return 0
+
+
+def command_log(args: argparse.Namespace) -> int:
+    root = core.git_root(current_directory(args.project))
+    if root is None:
+        print("error: project must be inside a Git work tree", file=sys.stderr)
+        return 1
+    events = journal.recent(root, args.limit)
+    if args.json:
+        print(json.dumps(events, ensure_ascii=False))
+    else:
+        print("\n".join(journal.format_event(event) for event in events) or "—")
+    return 0
+
+
+def command_todo(args: argparse.Namespace) -> int:
+    root = core.git_root(current_directory(args.project))
+    if root is None:
+        print("error: project must be inside a Git work tree", file=sys.stderr)
+        return 1
+    items = journal.open_todos(root)
+    if args.json:
+        print(json.dumps(items, ensure_ascii=False))
+    else:
+        print("\n".join(f"- [{item['status']}] {item['text']} ({item['source']})" for item in items) or "—")
     return 0
 
 
@@ -354,6 +413,9 @@ def command_update(args: argparse.Namespace) -> int:
     if args.tool:
         activity = reports.record_activity(root, args.tool, "finish", args.result)
     if wrote or args.tool:
+        with reports.project_hook_lock(root) as locked:
+            if locked:
+                _ingest_journal(root)
         _refresh_reports(root, args.lang)
     result = {"project": str(root), "marker": str(marker), "created": creating, "migrated": migrating, "status": payload}
     if activity is not None:
@@ -384,10 +446,10 @@ def command_hook_stop(args: argparse.Namespace) -> int:
     cwd = payload.get("cwd") if payload else None
     if not isinstance(cwd, str):
         return 0
-    return refresh_hook_reports(cwd)
+    return refresh_hook_reports(cwd, args.hook_tool, payload)
 
 
-def refresh_hook_reports(cwd: str) -> int:
+def refresh_hook_reports(cwd: str, tool: str | None = None, payload: dict | None = None) -> int:
     root = reports.eligible_hook_project(Path(cwd))
     if root is None:
         return 0
@@ -395,6 +457,10 @@ def refresh_hook_reports(cwd: str) -> int:
         with reports.project_hook_lock(root) as locked:
             if not locked:
                 return 0
+            try:
+                _ingest_journal(root, tool, payload)
+            except Exception:  # A changed transcript format must not break the report refresh.
+                pass
             _, cached = reports.refresh_project_report(root, language="zh-TW")
         if cached:
             return 0
@@ -562,12 +628,26 @@ def build_parser() -> argparse.ArgumentParser:
     handoff_show = handoff_subparsers.add_parser("show", help="Print the compact resume packet")
     handoff_show.add_argument("--project")
     handoff_show.set_defaults(handler=command_handoff_show)
+    log = subparsers.add_parser("log", help="Print recent journal events")
+    log.add_argument("--project")
+    log.add_argument("--limit", type=int, default=10)
+    log.add_argument("--json", action="store_true")
+    log.set_defaults(handler=command_log)
+    todo = subparsers.add_parser("todo", help="Print open todos from the journal and marker")
+    todo.add_argument("--project")
+    todo.add_argument("--json", action="store_true")
+    todo.set_defaults(handler=command_todo)
+    journal_parser = subparsers.add_parser("journal", help="Maintain the local trace journal")
+    journal_subparsers = journal_parser.add_subparsers(dest="journal_command", required=True)
+    journal_ingest = journal_subparsers.add_parser("ingest", help="Ingest Git history and marker changes now")
+    journal_ingest.add_argument("--project")
+    journal_ingest.set_defaults(handler=command_journal_ingest)
     hook = subparsers.add_parser("hook", help="Run or manage narrowly scoped agent hooks")
     hook_subparsers = hook.add_subparsers(dest="hook_command", required=True)
     hook_session_start = hook_subparsers.add_parser("codex-session-start")
     hook_session_start.set_defaults(handler=command_hook_session_start)
     hook_stop = hook_subparsers.add_parser("codex-stop")
-    hook_stop.set_defaults(handler=command_hook_stop)
+    hook_stop.set_defaults(handler=command_hook_stop, hook_tool="codex")
     hook_install = hook_subparsers.add_parser("codex-install")
     hook_install.add_argument("--hooks-file", required=True)
     hook_install.add_argument("--command", required=True)
@@ -578,7 +658,7 @@ def build_parser() -> argparse.ArgumentParser:
     claude_session_start = hook_subparsers.add_parser("claude-session-start")
     claude_session_start.set_defaults(handler=command_hook_session_start)
     claude_stop = hook_subparsers.add_parser("claude-stop")
-    claude_stop.set_defaults(handler=command_hook_stop)
+    claude_stop.set_defaults(handler=command_hook_stop, hook_tool="claude")
     claude_install = hook_subparsers.add_parser("claude-install")
     claude_install.add_argument("--hooks-file", required=True)
     claude_install.add_argument("--command", required=True)
@@ -587,7 +667,7 @@ def build_parser() -> argparse.ArgumentParser:
     claude_remove.add_argument("--hooks-file", required=True)
     claude_remove.set_defaults(handler=command_hook_remove_claude)
     grok_stop = hook_subparsers.add_parser("grok-stop")
-    grok_stop.set_defaults(handler=command_hook_stop)
+    grok_stop.set_defaults(handler=command_hook_stop, hook_tool="grok")
     grok_install = hook_subparsers.add_parser("grok-install")
     grok_install.add_argument("--hooks-file", required=True)
     grok_install.add_argument("--command", required=True)

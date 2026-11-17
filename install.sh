@@ -120,18 +120,20 @@ INSTALL_SHARED=0
 INSTALL_CLAUDE=0
 INSTALL_CODEX=0
 INSTALL_GROK=0
+# Each tool gets its native skill directory. Codex also loads ~/.agents/skills without
+# de-duplicating names, so the shared Antigravity copy is skipped whenever Codex is installed.
 case "$AGENT" in
-  all) INSTALL_SHARED=1; INSTALL_CLAUDE=1; INSTALL_CODEX=1; INSTALL_GROK=1 ;;
-  codex) INSTALL_SHARED=1; INSTALL_CODEX=1 ;;
+  all) INSTALL_CLAUDE=1; INSTALL_CODEX=1; INSTALL_GROK=1 ;;
+  codex) INSTALL_CODEX=1 ;;
   claude) INSTALL_CLAUDE=1 ;;
   antigravity) INSTALL_SHARED=1 ;;
-  grok) INSTALL_SHARED=1; INSTALL_GROK=1 ;;
+  grok) INSTALL_GROK=1 ;;
   auto)
-    [ -d "$HOME/.agents" ] && INSTALL_SHARED=1
-    [ -d "$HOME/.codex" ] && { INSTALL_SHARED=1; INSTALL_CODEX=1; }
+    [ -d "$HOME/.codex" ] && INSTALL_CODEX=1
     [ -d "$HOME/.claude" ] && INSTALL_CLAUDE=1
-    [ -d "$HOME/.grok" ] && { INSTALL_SHARED=1; INSTALL_GROK=1; }
-    if [ "$INSTALL_SHARED" -eq 0 ] && [ "$INSTALL_CLAUDE" -eq 0 ]; then
+    [ -d "$HOME/.grok" ] && INSTALL_GROK=1
+    [ -d "$HOME/.agents" ] && [ "$INSTALL_CODEX" -eq 0 ] && INSTALL_SHARED=1
+    if [ "$INSTALL_SHARED" -eq 0 ] && [ "$INSTALL_CLAUDE" -eq 0 ] && [ "$INSTALL_CODEX" -eq 0 ] && [ "$INSTALL_GROK" -eq 0 ]; then
       echo "no supported Agent home found; rerun with --agent codex|claude|antigravity|grok" >&2
       exit 1
     fi
@@ -141,6 +143,7 @@ esac
 [ "$INSTALL_SHARED" -eq 0 ] || install_skill "$HOME/.agents/skills/octopulse"
 [ "$INSTALL_CLAUDE" -eq 0 ] || install_skill "$HOME/.claude/skills/octopulse"
 [ "$INSTALL_CODEX" -eq 0 ] || install_skill "$HOME/.codex/skills/octopulse"
+[ "$INSTALL_GROK" -eq 0 ] || install_skill "$HOME/.grok/skills/octopulse"
 
 CLAUDE_SETTINGS_FILE="$HOME/.claude/settings.json"
 if [ "$INSTALL_CLAUDE" -eq 1 ]; then

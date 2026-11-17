@@ -2,7 +2,7 @@
 
 [繁體中文](README.md) · [English](README.en.md)
 
-OctoPulse v3.1.0 是為 AI 輔助開發設計的輕量專案進度系統。每個要追蹤的 Git 專案只保留一個很小的 `.octopulse`，讓 Agent 取得可靠進度時不必重新閱讀原始碼、歷史紀錄或所有專案報表。
+OctoPulse v3.2.0 是為 AI 輔助開發設計的輕量專案進度系統。每個要追蹤的 Git 專案只保留一個很小的 `.octopulse`，讓 Agent 取得可靠進度時不必重新閱讀原始碼、歷史紀錄或所有專案報表。
 
 ![OctoPulse 資料流程](docs/octopulse-flow.svg)
 
@@ -11,12 +11,13 @@ OctoPulse v3.1.0 是為 AI 輔助開發設計的輕量專案進度系統。每�
 - **小型、明確的脈衝檔。** `.octopulse` 是唯一的進度來源；空檔代表尚未初始化，非空檔必須符合嚴格 JSON schema，且上限為 4 KiB。
 - **上下文預算優先。** 一般 Agent session 只讀取 Git root、輕量 Git 事實與目前專案的 marker。報表不會自動注入 prompt。
 - **模型無關的交接。** handoff 只保存最新的工具、Git 變更檔名、必讀檔案與短決策；不保存 prompt、對話、diff 或檔案內容。
+- **自動追溯，不存對話文字。** Stop hook 增量讀取 Git 歷史、AI 工具的 transcript 與 marker 的下一步，寫入本機 `.octopulse-reports/journal.jsonl`。對話只擷取待辦工具的項目、時間、回合數、工具呼叫次數、專案內被編輯的檔名，以及是否執行 `git commit`；不保存 prompt、回覆、指令、工具輸出或 diff。整個過程由腳本完成，不消耗模型 token。
 - **腳本產生彙總。** `octopulse portfolio report` 只尋找已登錄根目錄中的 marker，總覽只讀取專案快照；`auto` 僅在 marker、Git 輕量事實、legacy context 或活動指紋改變時刷新該專案。
 - **明確且可逆的寫入。** 初始化、封存及注入 Agent 指引都要求明確指令；OctoPulse 不會修改或刪除 `PROJECT_STATUS.md` 與 `.ai/status.json`。專案報告可選擇唯讀、白名單擷取小型 `.ai/status.json` 作 legacy context。
 
 ## 安裝
 
-安裝最新 GitHub Release。Antigravity 與 Grok Build 共用 `~/.agents/skills`。Codex 另外安裝到 `~/.codex/skills/octopulse`，Claude Code 安裝到 `~/.claude/skills/octopulse`。`auto` 模式會偵測已安裝的平台。請選擇其一：
+安裝最新 GitHub Release。每個工具只裝一份到自己的目錄：Claude Code 是 `~/.claude/skills/octopulse`，Codex 是 `~/.codex/skills/octopulse`，Grok Build 是 `~/.grok/skills/octopulse`，Antigravity 是 `~/.agents/skills/octopulse`。Codex 也會讀 `~/.agents/skills` 且不去除同名 skill，所以安裝 Codex 時不會再裝 `~/.agents` 那份。`auto` 模式會偵測已安裝的平台。請選擇其一：
 
 首次安裝，或保留既有 skill：
 
@@ -30,7 +31,7 @@ curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/inst
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --force
 ```
 
-只有在需要同時支援所有平台時，才在上述任一指令加上 `--agent all`。Antigravity 與 Grok Build 共用 `~/.agents/skills/octopulse`，Codex 使用 `~/.codex/skills/octopulse`：
+只有在需要同時支援 Claude Code、Codex 與 Grok Build 時，才在上述任一指令加上 `--agent all`。Antigravity 需另外以 `--agent antigravity` 安裝；若同一台機器也用 Codex，Codex 會看到兩份 skill：
 
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent all
@@ -42,14 +43,14 @@ curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/inst
 octopulse --version
 ```
 
-Grok Build 可明確安裝 shared skill 與其原生 Stop hook；不會建立第二份 `~/.grok/skills`：
+Grok Build 可明確安裝原生 skill 與 Stop hook。Grok 會依名稱合併 `~/.grok`、`~/.agents`、`~/.claude` 的同名 skill，因此和 Claude Code 那份並存不會重複：
 
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent grok
 grok inspect
 ```
 
-`grok inspect` 應顯示 `~/.agents/skills/octopulse` 與 `~/.grok/hooks/octopulse.json`。grok.com 網頁版 Skills 無法直接執行本機 `octopulse` CLI，並非本整合的支援範圍。
+`grok inspect` 應顯示 `~/.grok/skills/octopulse` 與 `~/.grok/hooks/octopulse.json`。grok.com 網頁版 Skills 無法直接執行本機 `octopulse` CLI，並非本整合的支援範圍。
 
 在 Grok Build 讀取進度，並在語意狀態改變時寫回：
 
@@ -166,7 +167,7 @@ octopulse archive --yes --reason "Superseded by the new platform."
 
 ### 專案報告與 AI 工具活動
 
-提交完成後，若這次變更是目前的 AI 工具做的，把工具與對話編號記在本機，不寫進 commit：
+Claude Code 與 Codex 的 Stop hook 會自動把 session 內以 `git commit` 建立的提交連到該對話編號。沒有自動連結時（例如未安裝 hook），可手動記在本機，不寫進 commit：
 
 ```sh
 octopulse session record --commit HEAD --tool claude --session "$SESSION_ID"
@@ -181,9 +182,9 @@ octopulse activity finish --tool codex --result updated
 octopulse project report
 ```
 
-產物位於 `.octopulse-reports/`，包含 `snapshot.json`、`latest.md`、`index.html` 與最小 `activity.jsonl`。專案報告只讀 marker、Git metadata、最近 10 筆 commit subject、活動事件與可選的小型 `.ai/status.json`；不讀取原始碼或 diff。`.octopulse` 保持語意狀態唯一來源，legacy status 只作唯讀 context。
+產物位於 `.octopulse-reports/`，包含 `snapshot.json`、`latest.md`、`index.html`、最小 `activity.jsonl` 與 `journal.jsonl`。專案報告只讀 marker、Git metadata、最近 20 筆 commit subject、活動事件、journal 與可選的小型 `.ai/status.json`；不讀取原始碼或 diff。`.octopulse` 保持語意狀態唯一來源，legacy status 只作唯讀 context。
 
-當安裝器偵測到 Codex 時，會自動遷移已知的 v1 `UserPromptSubmit` hook，改為兩個全域 v3 hooks：`SessionStart` 在 `startup|resume` 注入一次極短 skill 提醒；`Stop` 僅在有效、已註冊且非封存的專案更新已變更的報告。它們讀取 `hook_event_name` 與 `cwd`，不讀 prompt、原始碼、diff 或對話，不寫 `.octopulse` 或 activity。若要停用或移除，重新安裝時指定：
+當安裝器偵測到 Codex 時，會自動遷移已知的 v1 `UserPromptSubmit` hook，改為兩個全域 v3 hooks：`SessionStart` 在 `startup|resume` 注入一次極短 skill 提醒；`Stop` 僅在有效、已註冊且非封存的專案更新已變更的報告。它們讀取 `hook_event_name` 與 `cwd`；`Stop` 另讀 `session_id` 與 `transcript_path` 來更新 journal（見「開發記錄與待辦」）。它們不保存 prompt 或回覆，不讀原始碼或 diff，不寫 `.octopulse` 或 activity。若要停用或移除，重新安裝時指定：
 
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --without-codex-hooks
@@ -192,7 +193,7 @@ curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/inst
 
 安裝器只自動遷移 `~/.codex/hooks.json` 的已知 v1 handler，保留其他 hooks。若舊設定位於 `config.toml`、plugin 或其他來源，請以 Codex `/hooks` 停用，因為多個來源的 hooks 都會執行。
 
-Claude Code 會把同一組行為併入既有的 `~/.claude/settings.json`，保留檔案裡的其他設定與 hooks。`SessionStart` 的 matcher 是 `startup|resume|clear|compact|fork`，stdout 使用 Claude 會讀取的 `hookSpecificOutput.additionalContext`。`Stop` 只刷新報告，不回傳會擋住結束的 `additionalContext`。若要停用或移除：
+Claude Code 會把同一組行為併入既有的 `~/.claude/settings.json`，保留檔案裡的其他設定與 hooks。`SessionStart` 的 matcher 是 `startup|resume|clear|compact|fork`，stdout 使用 Claude 會讀取的 `hookSpecificOutput.additionalContext`。`Stop` 更新 journal 並刷新報告，不回傳會擋住結束的 `additionalContext`。若要停用或移除：
 
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent claude --without-claude-hooks
@@ -204,6 +205,22 @@ Grok Build 使用獨立的 `~/.grok/hooks/octopulse.json`，只安裝 `Stop` hoo
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent grok --without-grok-hooks
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent grok --remove-grok-hooks
+```
+
+### 開發記錄與待辦
+
+已納管、非封存的專案在每次 Claude Code、Codex 或 Grok 回合結束時，由 Stop hook 自動更新本機 journal（`.octopulse-reports/journal.jsonl`，不進 Git）：
+
+- **Git：** 只處理上次之後的新 commit，記錄 subject、conventional commit 類型與 scope、增刪行數、檔案數。commit body 中 `TODO:`、`FIXME:`、`Follow-up:` 開頭的行會成為待辦；之後的 commit subject 提到同一件事時視為完成。不讀 diff 內容。
+- **AI 對話：** 只接受 `~/.claude/projects` 與 `~/.codex/sessions` 下的一般檔案，依位移只讀新增部分（每次上限 2 MiB）。擷取 Claude `TaskCreate`/`TaskUpdate`/`TodoWrite` 與 Codex `update_plan` 的待辦、回合數、工具呼叫次數、專案內被編輯的檔名，以及是否執行 `git commit`（用來自動連結提交與對話）。待辦文字會遮罩疑似金鑰。Grok 只走 Git 與 marker。
+- **Marker：** `next_action` 變更時記一筆。
+
+journal 最多 1000 筆、保留 180 天。Agent 平常只多看到 `octopulse status` 的一行摘要，需要追溯時再查：
+
+```sh
+octopulse log --limit 10   # 最近的開發記錄
+octopulse todo             # 目前未完成的待辦
+octopulse journal ingest   # 沒有 hook 時手動更新 Git 與 marker 記錄
 ```
 
 ### 總報告
@@ -261,6 +278,9 @@ marker 是空檔或不超過 4 KiB 的 UTF-8 JSON。完整定義請見 [schema](
 | `octopulse hook codex-session-start\|codex-stop` | 供 Codex lifecycle hook 使用；不可手動用於推測專案狀態。 |
 | `octopulse hook claude-session-start\|claude-stop` | 供 Claude Code lifecycle hook 使用；不可手動用於推測專案狀態。 |
 | `octopulse hook grok-stop` | 供 Grok Build Stop hook 使用；不可手動用於推測專案狀態。 |
+| `octopulse log [--limit N] [--json]` | 印出最近的 journal 事件（提交、對話、待辦清單、下一步）。 |
+| `octopulse todo [--json]` | 印出目前未完成的待辦（下一步、AI 待辦清單、commit 待辦）。 |
+| `octopulse journal ingest` | 立即把新 commit 與 marker 變更寫入 journal。 |
 | `octopulse project report` | 產生目前 repo 的專案快照、Markdown 與 HTML。 |
 | `octopulse portfolio report --refresh auto` | 在任意目錄產生所有納管專案總報告。 |
 | `octopulse validate .octopulse` | 驗證 marker schema 與大小。 |

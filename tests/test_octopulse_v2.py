@@ -553,7 +553,7 @@ class OctoPulseV2Tests(unittest.TestCase):
         finally:
             os.chdir(previous)
 
-    def test_installer_auto_adds_one_shared_skill_and_grok_hook(self):
+    def test_installer_gives_each_agent_one_native_skill_and_grok_hook(self):
         release = self.root / "release"
         subprocess.run(["sh", str(REPO_ROOT / "scripts" / "package-release.sh"), str(release)], cwd=REPO_ROOT, check=True)
         bin_dir = self.root / "bin"
@@ -572,6 +572,7 @@ class OctoPulseV2Tests(unittest.TestCase):
         fake_curl.chmod(0o755)
         home = self.root / "agent-home"
         (home / ".codex").mkdir(parents=True)
+        (home / ".agents").mkdir()
         (home / ".grok" / "hooks").mkdir(parents=True)
         other_hook = home / ".grok" / "hooks" / "other.json"
         other_hook.write_text('{"hooks":{"Stop":[]}}\n', encoding="utf-8")
@@ -583,13 +584,17 @@ class OctoPulseV2Tests(unittest.TestCase):
             "OCTOPULSE_TEST_CHECKSUM": str(release / "octopulse.sha256"),
         }
         subprocess.run(["sh", str(REPO_ROOT / "install.sh"), "--agent", "auto"], cwd=REPO_ROOT, env=environment, check=True)
-        self.assertTrue((home / ".agents" / "skills" / "octopulse" / "SKILL.md").is_file())
-        self.assertFalse((home / ".grok" / "skills" / "octopulse").exists())
+        # Codex loads ~/.codex/skills and ~/.agents/skills, so only one of them may hold the skill.
+        self.assertFalse((home / ".agents" / "skills" / "octopulse").exists())
+        self.assertTrue((home / ".grok" / "skills" / "octopulse" / "SKILL.md").is_file())
         grok_hook = json.loads((home / ".grok" / "hooks" / "octopulse.json").read_text(encoding="utf-8"))
         self.assertIn("hook grok-stop", grok_hook["hooks"]["Stop"][0]["hooks"][0]["command"])
         self.assertTrue((home / ".codex" / "hooks.json").is_file())
         self.assertTrue((home / ".codex" / "skills" / "octopulse" / "SKILL.md").is_file())
         self.assertEqual(other_hook.read_text(encoding="utf-8"), '{"hooks":{"Stop":[]}}\n')
+        subprocess.run(["sh", str(REPO_ROOT / "install.sh"), "--agent", "all", "--without-claude-hooks"], cwd=REPO_ROOT, env=environment, check=True)
+        self.assertTrue((home / ".claude" / "skills" / "octopulse" / "SKILL.md").is_file())
+        self.assertFalse((home / ".agents" / "skills" / "octopulse").exists())
         subprocess.run(["sh", str(REPO_ROOT / "install.sh"), "--agent", "grok", "--remove-grok-hooks"], cwd=REPO_ROOT, env=environment, check=True)
         self.assertFalse((home / ".grok" / "hooks" / "octopulse.json").exists())
         self.assertTrue(other_hook.exists())
@@ -784,6 +789,195 @@ class OctoPulseV2Tests(unittest.TestCase):
         self.assertFalse(any(name.startswith("tools/scan_projects.py") for name in names))
         self.assertFalse(any(name.startswith("tools/validate_status.py") for name in names))
         self.assertFalse(any("__pycache__" in name or name.endswith(".pyc") for name in names))
+        self.assertIn("octopulse/journal.py", names)
+
+    # Journal: Git history, AI transcripts, and marker next_action, ingested by hooks.
+
+    def journal_project(self, name="Journal"):
+        home = self.root / "user-home"
+        home.mkdir(exist_ok=True)
+        environment = patch.dict(os.environ, {"HOME": str(home)}, clear=False)
+        environment.start()
+        self.addCleanup(environment.stop)
+        os.environ.pop("CLAUDE_CONFIG_DIR", None)
+        os.environ.pop("CODEX_HOME", None)
+        project = self.make_git_project(name)
+        core.write_json(project / ".octopulse", valid_marker(name))
+        core.add_root(project)
+        yesterday = self.stamp(86400)
+        past = {**os.environ, "GIT_AUTHOR_DATE": yesterday, "GIT_COMMITTER_DATE": yesterday}
+        (project / "README.md").write_text("init", encoding="utf-8")
+        subprocess.run(["git", "-C", str(project), "add", "README.md"], check=True)
+        subprocess.run(["git", "-C", str(project), "commit", "-qm", "chore: init"], check=True, env=past)
+        return project, home
+
+    def commit_with_body(self, project: Path, name: str, message: str):
+        (project / name).write_text(message, encoding="utf-8")
+        subprocess.run(["git", "-C", str(project), "add", name], check=True)
+        subprocess.run(["git", "-C", str(project), "commit", "-qm", message], check=True)
+
+    @staticmethod
+    def write_lines(path: Path, lines: list[dict], mode="w"):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open(mode, encoding="utf-8") as handle:
+            for line in lines:
+                handle.write(json.dumps(line) + "\n")
+
+    @staticmethod
+    def stamp(seconds_ago: float) -> str:
+        from datetime import datetime, timedelta, timezone
+
+        return (datetime.now(timezone.utc) - timedelta(seconds=seconds_ago)).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+    def test_claude_transcript_feeds_journal_without_conversation_text(self):
+        from octopulse import journal
+
+        project, home = self.journal_project()
+        transcript = home / ".claude" / "projects" / "-tmp-journal" / "s1.jsonl"
+
+        def tool(identifier, name, data, seconds_ago):
+            return {"type": "assistant", "timestamp": self.stamp(seconds_ago), "message": {"role": "assistant", "content": [{"type": "tool_use", "id": identifier, "name": name, "input": data}]}}
+
+        def created(task_id, subject, seconds_ago):
+            return {"type": "user", "timestamp": self.stamp(seconds_ago), "toolUseResult": {"task": {"id": task_id, "subject": subject}}, "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "x", "content": "secret tool output must not leak"}]}}
+
+        token = "ghp_" + "a1" * 15
+        self.write_lines(
+            transcript,
+            [
+                {"type": "user", "timestamp": self.stamp(30), "message": {"role": "user", "content": "secret prompt must not leak"}},
+                {"type": "assistant", "timestamp": self.stamp(29), "message": {"role": "assistant", "content": [{"type": "text", "text": "secret reply must not leak"}]}},
+                tool("t1", "TaskCreate", {"subject": "Write journal tests", "description": "secret description must not leak"}, 28),
+                created("1", "Write journal tests", 27),
+                tool("t2", "TaskCreate", {"subject": f"Rotate {token}", "description": "secret"}, 26),
+                created("2", f"Rotate {token}", 25),
+                tool("t3", "TaskUpdate", {"taskId": "1", "status": "completed"}, 24),
+                tool("t4", "Edit", {"file_path": str(project / "app.py"), "old_string": "secret old", "new_string": "secret new"}, 23),
+                tool("t5", "Write", {"file_path": "/etc/hosts", "content": "secret"}, 22),
+                tool("t6", "Bash", {"command": "git commit -m 'feat(journal): add trace'"}, 1),
+            ],
+        )
+        self.commit_with_body(project, "app.py", "feat(journal): add trace\n\nTODO: cover codex plans\nBody secret stays in git only")
+        head = subprocess.run(["git", "-C", str(project), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+        payload = {"hook_event_name": "Stop", "cwd": str(project), "session_id": "s1", "transcript_path": str(transcript)}
+        self.assertEqual(self.run_hook(["hook", "claude-stop"], payload), "")
+
+        raw = journal.journal_path(project).read_text(encoding="utf-8")
+        self.assertNotIn("secret", raw)
+        self.assertNotIn(token, raw)
+        self.assertIn("[REDACTED]", raw)
+        events = journal.load_events(project)
+        commits = [event for event in events if event["kind"] == "commit"]
+        self.assertEqual([event["subject"] for event in commits], ["chore: init", "feat(journal): add trace"])
+        self.assertEqual((commits[1]["type"], commits[1]["scope"], commits[1]["files_changed"]), ("feat", "journal", 1))
+        session = [event for event in events if event["kind"] == "session"]
+        self.assertEqual(len(session), 1)
+        self.assertEqual((session[0]["tool"], session[0]["turns"], session[0]["tool_calls"], session[0]["files"]), ("claude", 1, 6, ["app.py"]))
+        todos = [(item["source"], item["text"], item["status"]) for item in journal.open_todos(project)]
+        self.assertEqual(todos[0], ("next_action", "Run tests.", "pending"))
+        self.assertIn(("claude", "Rotate [REDACTED]", "pending"), todos)
+        self.assertIn(("commit", "cover codex plans", "pending"), todos)
+        self.assertNotIn("Write journal tests", [text for _, text, _ in todos])
+        self.assertEqual(reports.load_sessions(project)[head]["session"], "s1")
+        self.assertEqual(len(reports.load_sessions(project)), 1)
+        snapshot = json.loads(reports.snapshot_path(project).read_text(encoding="utf-8"))
+        self.assertEqual(snapshot["journal"]["summary"]["open_todos"], 3)
+        html_text = (project / ".octopulse-reports" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("journalList", html_text)
+        self.assertNotIn("secret", html_text)
+
+        self.write_lines(
+            transcript,
+            [
+                {"type": "user", "timestamp": self.stamp(0), "message": {"role": "user", "content": [{"type": "text", "text": "another secret"}]}},
+                tool("t7", "TaskUpdate", {"taskId": "2", "status": "completed"}, 0),
+            ],
+            mode="a",
+        )
+        self.assertEqual(self.run_hook(["hook", "claude-stop"], payload), "")
+        self.assertEqual(self.run_hook(["hook", "claude-stop"], payload), "")
+        events = journal.load_events(project)
+        self.assertEqual(len([event for event in events if event["kind"] == "commit"]), 2)
+        session = [event for event in events if event["kind"] == "session"]
+        self.assertEqual((len(session), session[0]["turns"], session[0]["tool_calls"]), (1, 2, 7))
+        self.assertEqual(len([event for event in events if event["kind"] == "todos"]), 2)
+        self.assertNotIn("claude", [item["source"] for item in journal.open_todos(project)])
+        self.assertNotIn("secret", journal.journal_path(project).read_text(encoding="utf-8"))
+
+    def test_codex_rollout_feeds_plan_files_and_commit_link(self):
+        from octopulse import journal
+
+        project, home = self.journal_project("CodexJournal")
+        rollout = home / ".codex" / "sessions" / "2026" / "11" / "17" / "rollout-c1.jsonl"
+        plan = {"plan": [{"step": "Parse rollout", "status": "completed"}, {"step": "Render report", "status": "in_progress"}]}
+        self.write_lines(
+            rollout,
+            [
+                {"timestamp": self.stamp(30), "type": "event_msg", "payload": {"type": "item_completed", "item": {"type": "UserMessage", "id": "u1", "content": "secret prompt must not leak"}}},
+                {"timestamp": self.stamp(29), "type": "response_item", "payload": {"type": "function_call", "name": "update_plan", "arguments": json.dumps(plan), "call_id": "c1"}},
+                {"timestamp": self.stamp(28), "type": "event_msg", "payload": {"type": "item_completed", "item": {"type": "FileChange", "id": "f1", "changes": {str(project / "core.py"): {"type": "update", "unified_diff": "secret diff must not leak"}}}}},
+                {"timestamp": self.stamp(27), "type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec", "input": "secret code must not leak", "call_id": "c2"}},
+                {"timestamp": self.stamp(1), "type": "event_msg", "payload": {"type": "item_completed", "item": {"type": "CommandExecution", "id": "x1", "command": ["/bin/zsh", "-lc", "git commit -m 'fix: y'"], "exit_code": 0, "aggregated_output": "secret output must not leak"}}},
+            ],
+        )
+        self.commit_with_body(project, "core.py", "fix: y")
+        head = subprocess.run(["git", "-C", str(project), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+        payload = {"hook_event_name": "Stop", "cwd": str(project), "session_id": "c1", "transcript_path": str(rollout)}
+        self.assertEqual(self.run_hook(["hook", "codex-stop"], payload), "")
+
+        self.assertNotIn("secret", journal.journal_path(project).read_text(encoding="utf-8"))
+        session = [event for event in journal.load_events(project) if event["kind"] == "session"][0]
+        self.assertEqual((session["tool"], session["turns"], session["tool_calls"], session["files"]), ("codex", 1, 2, ["core.py"]))
+        self.assertIn(("codex", "Render report", "in_progress"), [(item["source"], item["text"], item["status"]) for item in journal.open_todos(project)])
+        self.assertEqual(reports.load_sessions(project)[head]["tool"], "codex")
+
+    def test_journal_ignores_untrusted_transcripts_and_reads_large_ones_incrementally(self):
+        from octopulse import journal
+
+        project, home = self.journal_project("Guarded")
+        outside = self.root / "outside.jsonl"
+        line = {"type": "user", "timestamp": self.stamp(5), "toolUseResult": {"task": {"id": "1", "subject": "Outside task"}}, "message": {"role": "user", "content": []}}
+        self.write_lines(outside, [line])
+        linked = home / ".claude" / "projects" / "p" / "linked.jsonl"
+        linked.parent.mkdir(parents=True)
+        linked.symlink_to(outside)
+        for path in (outside, linked):
+            self.assertEqual(self.run_hook(["hook", "claude-stop"], {"hook_event_name": "Stop", "cwd": str(project), "session_id": "s1", "transcript_path": str(path)}), "")
+        self.assertEqual([event for event in journal.load_events(project) if event["kind"] in {"session", "todos"}], [])
+        self.assertEqual(self.run_hook(["hook", "claude-stop"], {"hook_event_name": "Stop", "cwd": str(project), "session_id": "bad id", "transcript_path": str(linked)}), "")
+
+        large = home / ".claude" / "projects" / "p" / "large.jsonl"
+        filler = {"type": "assistant", "timestamp": self.stamp(10), "message": {"role": "assistant", "content": [{"type": "text", "text": "x" * 1000}]}}
+        self.write_lines(large, [filler] * 2200 + [{**line, "toolUseResult": {"task": {"id": "1", "subject": "Late task"}}}])
+        payload = {"hook_event_name": "Stop", "cwd": str(project), "session_id": "s2", "transcript_path": str(large)}
+        self.assertEqual(self.run_hook(["hook", "claude-stop"], payload), "")
+        self.assertNotIn("Late task", [item["text"] for item in journal.open_todos(project)])
+        self.assertEqual(self.run_hook(["hook", "claude-stop"], payload), "")
+        self.assertIn("Late task", [item["text"] for item in journal.open_todos(project)])
+
+    def test_update_log_todo_and_status_expose_a_compact_journal(self):
+        project, _ = self.journal_project("Daily")
+        self.commit_with_body(project, "a.txt", "docs: explain\n\nFollow-up: publish the guide")
+        self.assertEqual(self.capture(["update", "--directory", str(project), "--next", "Ship journal"])[0], 0)
+        self.assertEqual(self.capture(["journal", "ingest", "--project", str(project)])[0], 0)
+        code, text = self.capture(["log", "--project", str(project), "--limit", "2"])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(text.strip().splitlines()), 2)
+        code, raw = self.capture(["log", "--project", str(project), "--json"])
+        kinds = [event["kind"] for event in json.loads(raw)]
+        self.assertEqual(kinds.count("next_action"), 1)
+        self.assertEqual(kinds.count("commit"), 2)
+        code, text = self.capture(["todo", "--project", str(project)])
+        self.assertIn("Ship journal", text)
+        self.assertIn("publish the guide", text)
+        code, text = self.capture(["status", "--directory", str(project)])
+        self.assertIn("記錄: 2 項待辦", text)
+        code, raw = self.capture(["status", "--directory", str(project), "--json"])
+        self.assertEqual(json.loads(raw)["journal"]["open_todos"], 2)
+        self.commit_with_body(project, "b.txt", "docs: publish the guide")
+        self.assertEqual(self.capture(["journal", "ingest", "--project", str(project)])[0], 0)
+        code, text = self.capture(["todo", "--project", str(project)])
+        self.assertNotIn("publish the guide", text)
 
 
 if __name__ == "__main__":

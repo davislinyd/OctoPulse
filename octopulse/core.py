@@ -14,7 +14,7 @@ from typing import Any, Iterable
 
 VERSION = 3
 LEGACY_SCHEMA_VERSION = 2
-RELEASE_VERSION = "3.1.0"
+RELEASE_VERSION = "3.2.0"
 MARKER_NAME = ".octopulse"
 LEGACY_MARKER_NAME = ".otcopulse"
 MAX_MARKER_BYTES = 4096

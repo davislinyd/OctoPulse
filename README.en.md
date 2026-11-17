@@ -2,7 +2,7 @@
 
 [繁體中文](README.md) · [English](README.en.md)
 
-OctoPulse v3.1.0 is a lightweight project-progress system for AI-assisted development. Each tracked Git project keeps one small `.octopulse` file, so an agent can recover reliable status without rereading source code, conversation history, or every project report.
+OctoPulse v3.2.0 is a lightweight project-progress system for AI-assisted development. Each tracked Git project keeps one small `.octopulse` file, so an agent can recover reliable status without rereading source code, conversation history, or every project report.
 
 ![OctoPulse data flow](docs/octopulse-flow.svg)
 
@@ -11,12 +11,13 @@ OctoPulse v3.1.0 is a lightweight project-progress system for AI-assisted develo
 - **Small, explicit pulse files.** `.octopulse` is the sole status source. An empty file is uninitialized; a non-empty file must satisfy the strict JSON schema and remain under 4 KiB.
 - **Context budget first.** A normal agent session reads only the Git root, lightweight Git facts, and the current project's marker. Reports are never injected into prompts automatically.
 - **Model-neutral handoff.** A handoff stores only the latest tool, Git filenames, selected files, and short decisions; it never stores prompts, conversations, diffs, or file contents.
+- **Automatic traceability without conversation text.** The Stop hook incrementally reads Git history, AI tool transcripts, and the marker's next action into the local `.octopulse-reports/journal.jsonl`. From conversations it keeps only todo-tool items, timestamps, turn and tool-call counts, edited file names inside the project, and whether `git commit` ran; it never stores prompts, replies, commands, tool output, or diffs. A script does all of this, so no model tokens are spent.
 - **Scripted aggregation.** `octopulse portfolio report` only locates markers under registered roots, while the portfolio reads project snapshots. `auto` refreshes a project only when its marker, lightweight Git facts, legacy context, or activity fingerprint changed.
 - **Explicit, reversible writes.** Initialization, archiving, and agent-guidance injection require explicit commands. OctoPulse never changes or deletes `PROJECT_STATUS.md` or `.ai/status.json`. Project reports may optionally read a small, allow-listed `.ai/status.json` as legacy context.
 
 ## Install
 
-Install the latest GitHub Release. Antigravity and Grok Build share `~/.agents/skills`. Codex also receives `~/.codex/skills/octopulse`, and Claude Code receives `~/.claude/skills/octopulse`. In `auto` mode, the installer detects installed platforms. Choose one:
+Install the latest GitHub Release. Each tool receives exactly one copy in its own directory: `~/.claude/skills/octopulse` for Claude Code, `~/.codex/skills/octopulse` for Codex, `~/.grok/skills/octopulse` for Grok Build, and `~/.agents/skills/octopulse` for Antigravity. Codex also loads `~/.agents/skills` without de-duplicating names, so installing Codex skips the `~/.agents` copy. In `auto` mode, the installer detects installed platforms. Choose one:
 
 First install, or keep an existing skill:
 
@@ -30,7 +31,7 @@ Update an existing skill (replaces the `octopulse` skill):
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --force
 ```
 
-Add `--agent all` to either command only when every platform is required. Antigravity and Grok Build share `~/.agents/skills/octopulse`, and Codex uses `~/.codex/skills/octopulse`:
+Add `--agent all` to either command only when Claude Code, Codex, and Grok Build are all required. Install Antigravity separately with `--agent antigravity`; on a machine that also runs Codex, Codex will then list two copies:
 
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent all
@@ -42,14 +43,14 @@ The installer verifies the release archive SHA-256 and attempts to create `~/.lo
 octopulse --version
 ```
 
-Install Grok Build explicitly to add the shared skill and its native Stop hook; no second `~/.grok/skills` copy is created:
+Install Grok Build explicitly to add its native skill and Stop hook. Grok merges same-named skills from `~/.grok`, `~/.agents`, and `~/.claude`, so it does not list a duplicate next to the Claude Code copy:
 
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent grok
 grok inspect
 ```
 
-`grok inspect` should show `~/.agents/skills/octopulse` and `~/.grok/hooks/octopulse.json`. grok.com web Skills cannot directly run the local `octopulse` CLI and are outside this integration's scope.
+`grok inspect` should show `~/.grok/skills/octopulse` and `~/.grok/hooks/octopulse.json`. grok.com web Skills cannot directly run the local `octopulse` CLI and are outside this integration's scope.
 
 In Grok Build, read progress and write it back when the semantic status changes:
 
@@ -166,7 +167,7 @@ This writes a valid `phase: paused`, `health: stale` marker with an archive reas
 
 ### Project reports and AI tool activity
 
-After an AI tool creates a commit, record the tool and conversation locally. Do not put them in the commit message:
+The Claude Code and Codex Stop hooks automatically link commits created with `git commit` in a session to that conversation id. When no automatic link exists (for example, without hooks), record it locally by hand. Do not put it in the commit message:
 
 ```sh
 octopulse session record --commit HEAD --tool claude --session "$SESSION_ID"
@@ -181,9 +182,9 @@ octopulse activity finish --tool codex --result updated
 octopulse project report
 ```
 
-Artifacts live in `.octopulse-reports/`: `snapshot.json`, `latest.md`, `index.html`, and a minimal `activity.jsonl`. The project report reads only the marker, Git metadata, the latest 10 commit subjects, activity events, and an optional small `.ai/status.json`; it never reads source code or diffs. `.octopulse` remains the sole semantic status source; legacy status is read-only context.
+Artifacts live in `.octopulse-reports/`: `snapshot.json`, `latest.md`, `index.html`, a minimal `activity.jsonl`, and `journal.jsonl`. The project report reads only the marker, Git metadata, the latest 20 commit subjects, activity events, the journal, and an optional small `.ai/status.json`; it never reads source code or diffs. `.octopulse` remains the sole semantic status source; legacy status is read-only context.
 
-When the installer detects Codex, it automatically migrates known v1 `UserPromptSubmit` hooks to two global v3 hooks: `SessionStart` injects one short skill reminder at `startup|resume`; `Stop` refreshes changed reports only for valid, registered, non-archived projects. They read `hook_event_name` and `cwd`. They do not read prompts, source code, diffs, or conversations, and never write `.octopulse` or activity. Disable or remove them during reinstall with:
+When the installer detects Codex, it automatically migrates known v1 `UserPromptSubmit` hooks to two global v3 hooks: `SessionStart` injects one short skill reminder at `startup|resume`; `Stop` refreshes changed reports only for valid, registered, non-archived projects. They read `hook_event_name` and `cwd`; `Stop` also reads `session_id` and `transcript_path` to update the journal (see Development log and todos). They never store prompts or replies, never read source code or diffs, and never write `.octopulse` or activity. Disable or remove them during reinstall with:
 
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --without-codex-hooks
@@ -192,7 +193,7 @@ curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/inst
 
 The installer automatically migrates only known v1 handlers in `~/.codex/hooks.json` and preserves other hooks. Disable legacy hooks from `config.toml`, plugins, or other sources with Codex `/hooks`, because hooks from multiple sources all run.
 
-Claude Code gets the same behavior merged into the existing `~/.claude/settings.json`, leaving the file's other settings and hooks in place. The `SessionStart` matcher is `startup|resume|clear|compact|fork`, and stdout uses the `hookSpecificOutput.additionalContext` field Claude reads. `Stop` only refreshes reports and does not return `additionalContext`, which would keep the turn open. Disable or remove them with:
+Claude Code gets the same behavior merged into the existing `~/.claude/settings.json`, leaving the file's other settings and hooks in place. The `SessionStart` matcher is `startup|resume|clear|compact|fork`, and stdout uses the `hookSpecificOutput.additionalContext` field Claude reads. `Stop` updates the journal and refreshes reports, and does not return `additionalContext`, which would keep the turn open. Disable or remove them with:
 
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent claude --without-claude-hooks
@@ -204,6 +205,22 @@ Grok Build uses a separate `~/.grok/hooks/octopulse.json` containing only a `Sto
 ```sh
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent grok --without-grok-hooks
 curl -fsSL https://github.com/davislinyd/OctoPulse/releases/latest/download/install.sh | sh -s -- --agent grok --remove-grok-hooks
+```
+
+### Development log and todos
+
+For a registered, non-archived project, the Stop hook updates a local journal (`.octopulse-reports/journal.jsonl`, never committed) at the end of each Claude Code, Codex, or Grok turn:
+
+- **Git:** only commits since the last run. It records the subject, conventional-commit type and scope, line counts, and file count. Lines in the commit body starting with `TODO:`, `FIXME:`, or `Follow-up:` become todos; a later commit subject that mentions the same text closes them. Diff contents are never read.
+- **AI conversations:** only regular files under `~/.claude/projects` and `~/.codex/sessions`, read from the last offset (at most 2 MiB per run). It extracts todos from Claude `TaskCreate`/`TaskUpdate`/`TodoWrite` and Codex `update_plan`, turn and tool-call counts, edited file names inside the project, and whether `git commit` ran (used to link commits to the conversation). Todo text is masked for likely secrets. Grok uses only Git and the marker.
+- **Marker:** a change to `next_action` adds one event.
+
+The journal keeps at most 1000 events for 180 days. Agents normally see only one extra summary line in `octopulse status`, and query details on demand:
+
+```sh
+octopulse log --limit 10   # recent development log
+octopulse todo             # current open todos
+octopulse journal ingest   # update Git and marker records without hooks
 ```
 
 ### Portfolio report
@@ -261,6 +278,9 @@ A marker is either empty or UTF-8 JSON under 4 KiB. See the complete [schema](sc
 | `octopulse hook codex-session-start\|codex-stop` | Used by Codex lifecycle hooks; never use it to infer project status manually. |
 | `octopulse hook claude-session-start\|claude-stop` | Used by Claude Code lifecycle hooks; never use it to infer project status manually. |
 | `octopulse hook grok-stop` | Used by the Grok Build Stop hook; never use it to infer project status manually. |
+| `octopulse log [--limit N] [--json]` | Print recent journal events (commits, sessions, todo lists, next actions). |
+| `octopulse todo [--json]` | Print current open todos (next action, AI todo list, commit todos). |
+| `octopulse journal ingest` | Write new commits and marker changes to the journal now. |
 | `octopulse project report` | Generate the current repo's snapshot, Markdown, and HTML. |
 | `octopulse portfolio report --refresh auto` | Generate a portfolio report from any directory. |
 | `octopulse validate .octopulse` | Validate marker schema and size. |
