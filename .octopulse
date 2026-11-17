@@ -1,12 +1,12 @@
 {
   "schema_version": 3,
   "name": "OctoPulse",
-  "last_updated": "2026-11-17T14:07:59+08:00",
+  "last_updated": "2026-11-17T15:15:23+08:00",
   "phase": "implementation",
   "health": "active",
   "goal": "讓目前專案的進度可以用一個命令讀出、用一個命令寫入。",
   "summary": "3.2.0：新增本機 journal（Git、AI transcript 結構化欄位、next_action）；install.sh 改為每個工具只裝一份原生 skill，修正 Codex 重複載入。",
-  "next_action": "決定是否 push 並發佈 3.2.0 GitHub Release。",
+  "next_action": "3.2.0 已發佈；在其他電腦以 install.sh 驗證安裝。",
   "verification": {
     "status": "passed",
     "last_command": "python3 -m unittest tests.test_octopulse_v2",
